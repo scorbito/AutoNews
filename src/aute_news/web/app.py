@@ -1,22 +1,21 @@
-"""기자 검토 UI (FastAPI + Jinja2).
+"""기자 검토 UI (FastAPI + Jinja2) — Supabase Auth 로그인 + 멀티테넌트.
 
-화면 흐름:
-  목록(/)  →  상세(/item/{id})  →  [초안 생성] / [편집 저장] / [상태 변경]
-상태: collected → (초안생성) draft → (검토) reviewed → (발행) published
+로그인한 신문사(tenant)의 데이터만 보이고 처리된다.
 """
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
-
 from typing import Annotated
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-import json
-
-from .. import articlegen, db
+from .. import articlegen, auth, db
+from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
 from ..publishers import get_publisher
@@ -26,14 +25,35 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 app = FastAPI(title="aute_news 기자 검토")
 
-STATUS_LABEL = {
-    None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨",
-}
-# 기사(articles) 상태 라벨
+STATUS_LABEL = {None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨"}
 ASTATUS = {None: "-", "split": "분할됨", "drafted": "초안",
            "reviewed": "검토완료", "published": "발행됨"}
 AFILTERS = [("all", "전체"), ("drafted", "초안"), ("reviewed", "검토완료"),
             ("published", "발행됨"), ("split", "분할만")]
+FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
+           ("reviewed", "검토완료"), ("published", "발행됨")]
+
+_PUBLIC_PATHS = ("/login", "/logout")
+
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    path = request.url.path
+    if path in _PUBLIC_PATHS or path.startswith("/static"):
+        return await call_next(request)
+    if not request.session.get("tenant_id"):
+        return RedirectResponse("/login", status_code=303)
+    return await call_next(request)
+
+
+# SessionMiddleware 를 나중에 추가 → 가장 바깥 → 세션이 위 인증게이트보다 먼저 채워짐
+app.add_middleware(SessionMiddleware,
+                   secret_key=os.getenv("SESSION_SECRET", "dev-insecure-change-me"),
+                   max_age=60 * 60 * 12)
+
+
+def _tenant(request: Request) -> int:
+    return request.session["tenant_id"]
 
 
 def _jload(s):
@@ -43,12 +63,7 @@ def _jload(s):
         return {}
 
 
-FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
-           ("reviewed", "검토완료"), ("published", "발행됨")]
-
-
 def md_to_html(text: str) -> str:
-    """저장된 마크다운 기사를 간단히 HTML 로 렌더(읽기 전용 보기용)."""
     import html
     out, in_list = [], False
     for line in (text or "").splitlines():
@@ -73,27 +88,53 @@ def md_to_html(text: str) -> str:
     return "\n".join(out)
 
 
-from ..config import CATEGORY_CODES  # noqa: E402
+# ── 인증 ──────────────────────────────────────────────
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, error: str = ""):
+    return templates.TemplateResponse(request, "login.html", {"error": error})
 
 
+@app.post("/login")
+def login_post(request: Request, email: str = Form(...), password: str = Form(...)):
+    user = auth.supabase_login(email, password)
+    if not user:
+        return RedirectResponse("/login?error=1", status_code=303)
+    conn = db.connect()
+    tid, role = auth.tenant_for_user(conn, user["id"])
+    conn.close()
+    if not tid:
+        return RedirectResponse("/login?error=2", status_code=303)
+    request.session.update({"user_id": user["id"], "email": user["email"],
+                            "tenant_id": tid, "role": role})
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+# ── 기사(articles) ────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, status: str = "all"):
-    """기사(articles) 목록 — 파이프라인 산출물(검토/발행 단위)."""
+    t = _tenant(request)
     conn = db.connect()
-    arts = db.list_all_articles(conn, status)
-    counts = db.article_status_counts(conn)
+    arts = db.list_all_articles(conn, status, tenant_id=t)
+    counts = db.article_status_counts(conn, tenant_id=t)
     conn.close()
     return templates.TemplateResponse(
         request, "articles.html",
-        {"arts": arts, "astatus": ASTATUS, "filters": AFILTERS,
-         "counts": counts, "active": status, "cats": CATEGORY_CODES})
+        {"arts": arts, "astatus": ASTATUS, "filters": AFILTERS, "counts": counts,
+         "active": status, "cats": CATEGORY_CODES, "email": request.session.get("email")})
 
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)
 def article_detail(request: Request, article_id: int):
+    t = _tenant(request)
     conn = db.connect()
-    art = db.get_article(conn, article_id)
-    imgs = db.list_article_images(conn, article_id)
+    art = db.get_article(conn, article_id, tenant_id=t)
+    imgs = db.list_article_images(conn, article_id, tenant_id=t)
     conn.close()
     return templates.TemplateResponse(
         request, "article_detail.html",
@@ -103,36 +144,49 @@ def article_detail(request: Request, article_id: int):
 
 
 @app.post("/a/{article_id}/save")
-def article_save(article_id: int, headline: str = Form(...), subtitle: str = Form(""),
-                 content_html: str = Form(...), category_code: str = Form("S1N10")):
+def article_save(request: Request, article_id: int, headline: str = Form(...),
+                 subtitle: str = Form(""), content_html: str = Form(...),
+                 category_code: str = Form("S1N10")):
     conn = db.connect()
     db.update_article_edit(conn, article_id, headline=headline, subtitle=subtitle,
-                           content_html=content_html, category_code=category_code)
+                           content_html=content_html, category_code=category_code,
+                           tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/a/{article_id}", status_code=303)
 
 
 @app.post("/a/{article_id}/review")
-def article_review(article_id: int):
+def article_review(request: Request, article_id: int):
     conn = db.connect()
-    db.set_article_status(conn, article_id, "reviewed")
+    db.set_article_status(conn, article_id, "reviewed", tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/a/{article_id}", status_code=303)
 
 
 @app.post("/a/{article_id}/publish")
-def article_publish(article_id: int):
+def article_publish(request: Request, article_id: int):
     conn = db.connect()
-    publish_article(conn, article_id)   # 활성 발행기(기본 HTML, atpaju는 하드잠금)
+    publish_article(conn, article_id, tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/a/{article_id}", status_code=303)
 
 
+@app.get("/img/{image_id}")
+def serve_img(request: Request, image_id: int):
+    t = _tenant(request)
+    conn = db.connect()
+    r = conn.execute("SELECT path FROM images WHERE id=? AND tenant_id=?", (image_id, t)).fetchone()
+    conn.close()
+    return FileResponse(r["path"]) if r and r["path"] else HTMLResponse("not found", 404)
+
+
+# ── 레거시(첨부 기준 drafts) ──────────────────────────
 @app.get("/legacy", response_class=HTMLResponse)
 def index_legacy(request: Request, status: str = "all"):
+    t = _tenant(request)
     conn = db.connect()
-    items = db.list_items(conn, None if status == "all" else status)
-    counts = db.status_counts(conn)
+    items = db.list_items(conn, None if status == "all" else status, tenant_id=t)
+    counts = db.status_counts(conn, tenant_id=t)
     conn.close()
     return templates.TemplateResponse(
         request, "list.html",
@@ -142,36 +196,29 @@ def index_legacy(request: Request, status: str = "all"):
 
 @app.get("/item/{att_id}", response_class=HTMLResponse)
 def item(request: Request, att_id: int):
+    t = _tenant(request)
     conn = db.connect()
-    row = db.get_item(conn, att_id)
-    imgs = db.list_images(conn, att_id)
+    row = db.get_item(conn, att_id, tenant_id=t)
+    imgs = db.list_images(conn, att_id, tenant_id=t)
     conn.close()
     return templates.TemplateResponse(
         request, "detail.html", {"it": row, "images": imgs, "label": STATUS_LABEL})
 
 
-@app.get("/img/{image_id}")
-def serve_img(image_id: int):
-    conn = db.connect()
-    r = conn.execute("SELECT path FROM images WHERE id=?", (image_id,)).fetchone()
-    conn.close()
-    return FileResponse(r["path"]) if r and r["path"] else HTMLResponse("not found", 404)
-
-
 @app.post("/image/{image_id}/toggle")
-def toggle_img(image_id: int, att_id: int = Form(...), selected: int = Form(...)):
+def toggle_img(request: Request, image_id: int, att_id: int = Form(...), selected: int = Form(...)):
     conn = db.connect()
-    db.set_image_selected(conn, image_id, bool(selected))
+    db.set_image_selected(conn, image_id, bool(selected), tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/item/{att_id}", status_code=303)
 
 
 @app.get("/article/{att_id}", response_class=HTMLResponse)
 def article(request: Request, att_id: int):
-    """발행/완성 기사 읽기 전용 보기."""
+    t = _tenant(request)
     conn = db.connect()
-    row = db.get_item(conn, att_id)
-    imgs = [im for im in db.list_images(conn, att_id) if im["selected"]]
+    row = db.get_item(conn, att_id, tenant_id=t)
+    imgs = [im for im in db.list_images(conn, att_id, tenant_id=t) if im["selected"]]
     conn.close()
     body_html = md_to_html(row["content"]) if row and row["content"] else ""
     return templates.TemplateResponse(
@@ -180,63 +227,63 @@ def article(request: Request, att_id: int):
 
 
 @app.post("/item/{att_id}/generate")
-def generate(att_id: int):
+def generate(request: Request, att_id: int):
+    t = _tenant(request)
     conn = db.connect()
-    row = db.get_item(conn, att_id)
+    row = db.get_item(conn, att_id, tenant_id=t)
     if row and row["extracted_text"]:
-        article = generate_article(row["extracted_text"], source_title=row["filename"])
-        db.upsert_draft(conn, att_id, article.headline, render_markdown(article), "draft")
+        a = generate_article(row["extracted_text"], source_title=row["filename"])
+        db.upsert_draft(conn, att_id, a.headline, render_markdown(a), "draft", tenant_id=t)
     conn.close()
     return RedirectResponse(f"/item/{att_id}", status_code=303)
 
 
 @app.post("/item/{att_id}/save")
-def save(att_id: int, headline: str = Form(...), content: str = Form(...)):
+def save(request: Request, att_id: int, headline: str = Form(...), content: str = Form(...)):
     conn = db.connect()
-    db.upsert_draft(conn, att_id, headline, content, "draft")
+    db.upsert_draft(conn, att_id, headline, content, "draft", tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/item/{att_id}", status_code=303)
 
 
-def _publish_one(conn, att_id: int) -> bool:
-    """초안이 있는 항목을 발행 어댑터로 발행하고 결과를 저장."""
-    row = db.get_item(conn, att_id)
+def _publish_one(conn, att_id: int, tenant_id: int) -> bool:
+    row = db.get_item(conn, att_id, tenant_id=tenant_id)
     if not row or not row["content"]:
         return False
     imgs = [{"path": im["path"], "caption": im["caption"]}
-            for im in db.list_images(conn, att_id) if im["selected"]]
+            for im in db.list_images(conn, att_id, tenant_id=tenant_id) if im["selected"]]
     result = get_publisher().publish(att_id, row["headline"] or "", row["content"], imgs)
     if result.ok:
-        db.mark_published(conn, att_id, result.url)
+        db.mark_published(conn, att_id, result.url, tenant_id=tenant_id)
     return result.ok
 
 
 @app.post("/item/{att_id}/status")
-def status(att_id: int, status: str = Form(...)):
+def status(request: Request, att_id: int, status: str = Form(...)):
+    t = _tenant(request)
     conn = db.connect()
     if status == "published":
-        _publish_one(conn, att_id)
+        _publish_one(conn, att_id, t)
     else:
-        db.set_draft_status(conn, att_id, status)
+        db.set_draft_status(conn, att_id, status, tenant_id=t)
     conn.close()
     return RedirectResponse(f"/item/{att_id}", status_code=303)
 
 
 @app.post("/bulk")
-def bulk(action: str = Form(...), ids: Annotated[list[int], Form()] = []):
-    """목록에서 체크한 기사들을 일괄 처리(초안생성/검토완료/발행)."""
+def bulk(request: Request, action: str = Form(...), ids: Annotated[list[int], Form()] = []):
+    t = _tenant(request)
     conn = db.connect()
     if action == "generate":
-        # 추출 텍스트가 있고 아직 초안이 없는 항목만 생성(중복 호출/비용 방지)
         for att_id in ids:
-            row = db.get_item(conn, att_id)
+            row = db.get_item(conn, att_id, tenant_id=t)
             if row and row["extracted_text"] and not row["content"]:
-                art = generate_article(row["extracted_text"], source_title=row["filename"])
-                db.upsert_draft(conn, att_id, art.headline, render_markdown(art), "draft")
+                a = generate_article(row["extracted_text"], source_title=row["filename"])
+                db.upsert_draft(conn, att_id, a.headline, render_markdown(a), "draft", tenant_id=t)
     elif action == "publish":
         for att_id in ids:
-            _publish_one(conn, att_id)
+            _publish_one(conn, att_id, t)
     elif action == "review":
-        db.bulk_set_status(conn, ids, "reviewed")
+        db.bulk_set_status(conn, ids, "reviewed", tenant_id=t)
     conn.close()
     return RedirectResponse("/", status_code=303)

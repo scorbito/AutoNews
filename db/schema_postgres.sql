@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS tenants (
 INSERT INTO tenants (id, name, slug) VALUES (1, '기본', 'default')
     ON CONFLICT (id) DO NOTHING;
 
+-- 사용자 ↔ 테넌트 매핑 (Supabase Auth user.id ↔ 신문사)
+CREATE TABLE IF NOT EXISTS tenant_users (
+    user_id    UUID PRIMARY KEY,        -- Supabase auth.users.id
+    tenant_id  BIGINT NOT NULL REFERENCES tenants(id),
+    email      TEXT,
+    role       TEXT NOT NULL DEFAULT 'editor',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_users_tenant ON tenant_users(tenant_id);
+
 -- 기존 데이터 테이블 재생성(멀티테넌트). 빈 상태에서만 안전.
 DROP TABLE IF EXISTS drafts, images, articles, attachments, messages, folder_state CASCADE;
 

@@ -7,6 +7,7 @@ uvicorn[standard]>=0.42.0
 jinja2>=3.1.6
 python-multipart>=0.0.22
 python-dotenv>=1.2.2
+itsdangerous>=2.2          # 세션 쿠키 서명(SessionMiddleware)
 
 # 메일 수집
 imap-tools>=1.13.0

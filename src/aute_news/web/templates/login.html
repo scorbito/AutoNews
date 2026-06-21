@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>로그인 — auto_news</title>
+  <style>
+    body { font-family: -apple-system, "Malgun Gothic", sans-serif; background: #f5f6f8;
+           display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
+    .box { background: #fff; padding: 36px 32px; border-radius: 12px; width: 340px;
+           box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #888; font-size: 13px; margin: 0 0 20px; }
+    label { font-size: 13px; color: #666; display: block; margin: 12px 0 4px; }
+    input { width: 100%; padding: 11px; border: 1px solid #ccc; border-radius: 6px;
+            font-size: 14px; box-sizing: border-box; }
+    button { width: 100%; margin-top: 20px; background: #1a73e8; color: #fff; border: 0;
+             padding: 12px; border-radius: 6px; font-size: 15px; cursor: pointer; }
+    .err { background: #fce8e6; color: #c5221f; padding: 10px 12px; border-radius: 6px;
+           font-size: 13px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>📰 auto_news</h1>
+    <p class="sub">신문사 계정으로 로그인</p>
+    {% if error == "1" %}<div class="err">이메일 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}
+    {% if error == "2" %}<div class="err">이 계정에 신문사가 배정되지 않았습니다. 관리자에게 문의하세요.</div>{% endif %}
+    <form method="post" action="/login">
+      <label>이메일</label>
+      <input type="email" name="email" required autofocus>
+      <label>비밀번호</label>
+      <input type="password" name="password" required>
+      <button type="submit">로그인</button>
+    </form>
+  </div>
+</body>
+</html>

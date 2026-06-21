@@ -22,18 +22,18 @@ def _mode() -> str:
     return os.getenv("PIPELINE_MODE", "review").lower()
 
 
-def publish_article(conn, article_id: int):
+def publish_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT):
     """기사 1건을 활성 발행기로 발행하고 결과 저장."""
-    art = db.get_article(conn, article_id)
+    art = db.get_article(conn, article_id, tenant_id=tenant_id)
     if not art or not art["content_html"]:
         return None
     imgs = [{"path": i["path"], "caption": i["caption"] or ""}
-            for i in db.list_article_images(conn, article_id)]
+            for i in db.list_article_images(conn, article_id, tenant_id=tenant_id)]
     res = get_publisher().publish(
         article_id, art["headline"] or "", art["content_html"], imgs,
         category=art["category_code"], subtitle=art["subtitle"] or "", body_is_html=True)
     if res and res.ok:
-        db.mark_article_published(conn, article_id, res.url)
+        db.mark_article_published(conn, article_id, res.url, tenant_id=tenant_id)
     return res
 
 
