@@ -1,19 +1,36 @@
--- auto_news Postgres 스키마 (Supabase SQL Editor 에 붙여넣고 Run)
--- SQLite(MVP) 스키마를 Postgres 로 이식. 멀티테넌시(tenant_id)는 이후 단계에서 추가.
+-- auto_news 멀티테넌트 Postgres 스키마 (Supabase)
+-- 모든 데이터 테이블에 tenant_id (신문사별 격리).
 
-CREATE TABLE IF NOT EXISTS folder_state (
+-- 신문사(테넌트)
+CREATE TABLE IF NOT EXISTS tenants (
+    id          BIGSERIAL PRIMARY KEY,
+    name        TEXT NOT NULL,
+    slug        TEXT UNIQUE,
+    status      TEXT NOT NULL DEFAULT 'active',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 기본 테넌트(개발/전환용, id=1)
+INSERT INTO tenants (id, name, slug) VALUES (1, '기본', 'default')
+    ON CONFLICT (id) DO NOTHING;
+
+-- 기존 데이터 테이블 재생성(멀티테넌트). 빈 상태에서만 안전.
+DROP TABLE IF EXISTS drafts, images, articles, attachments, messages, folder_state CASCADE;
+
+CREATE TABLE folder_state (
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
     account   TEXT NOT NULL,
     folder    TEXT NOT NULL,
     last_uid  BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (account, folder)
+    PRIMARY KEY (tenant_id, account, folder)
 );
 
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE messages (
     id                 BIGSERIAL PRIMARY KEY,
+    tenant_id          BIGINT NOT NULL REFERENCES tenants(id),
     account            TEXT NOT NULL,
     folder             TEXT NOT NULL,
     uid                BIGINT NOT NULL,
-    message_id         TEXT UNIQUE,
+    message_id         TEXT,
     subject            TEXT,
     sender             TEXT,
     date               TEXT,
@@ -22,11 +39,13 @@ CREATE TABLE IF NOT EXISTS messages (
     pipeline           TEXT,
     triage_confidence  REAL,
     triage_reason      TEXT,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, message_id)
 );
 
-CREATE TABLE IF NOT EXISTS attachments (
+CREATE TABLE attachments (
     id              BIGSERIAL PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL REFERENCES tenants(id),
     message_pk      BIGINT NOT NULL REFERENCES messages(id),
     filename        TEXT,
     format          TEXT,
@@ -36,39 +55,31 @@ CREATE TABLE IF NOT EXISTS attachments (
     extract_status  TEXT NOT NULL DEFAULT 'pending'
 );
 
-CREATE TABLE IF NOT EXISTS articles (
+CREATE TABLE articles (
     id              BIGSERIAL PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL REFERENCES tenants(id),
     attachment_id   BIGINT REFERENCES attachments(id),
     sequence_number INTEGER DEFAULT 1,
     title           TEXT,
     body            TEXT,
-    contact_info    TEXT,          -- JSON 문자열
+    contact_info    TEXT,
     category_hint   TEXT,
     headline        TEXT,
     subtitle        TEXT,
     content_html    TEXT,
     category_code   TEXT,
     article_type    TEXT,
-    source_info     TEXT,          -- JSON
-    editor_notes    TEXT,          -- JSON
+    source_info     TEXT,
+    editor_notes    TEXT,
     status          TEXT NOT NULL DEFAULT 'split',
     published_url   TEXT,
     published_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS drafts (
-    attachment_id   BIGINT PRIMARY KEY REFERENCES attachments(id),
-    headline        TEXT,
-    content         TEXT,
-    status          TEXT NOT NULL DEFAULT 'draft',
-    published_url   TEXT,
-    published_at    TIMESTAMPTZ,
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS images (
+CREATE TABLE images (
     id              BIGSERIAL PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL REFERENCES tenants(id),
     attachment_id   BIGINT NOT NULL REFERENCES attachments(id),
     path            TEXT,
     ext             TEXT,
@@ -82,8 +93,23 @@ CREATE TABLE IF NOT EXISTS images (
     article_id      BIGINT
 );
 
--- 조회 성능용 인덱스
-CREATE INDEX IF NOT EXISTS idx_attachments_msg ON attachments(message_pk);
-CREATE INDEX IF NOT EXISTS idx_articles_att    ON articles(attachment_id);
-CREATE INDEX IF NOT EXISTS idx_images_att      ON images(attachment_id);
-CREATE INDEX IF NOT EXISTS idx_images_article  ON images(article_id);
+CREATE TABLE drafts (
+    attachment_id   BIGINT PRIMARY KEY REFERENCES attachments(id),
+    tenant_id       BIGINT NOT NULL REFERENCES tenants(id),
+    headline        TEXT,
+    content         TEXT,
+    status          TEXT NOT NULL DEFAULT 'draft',
+    published_url   TEXT,
+    published_at    TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 테넌트/조회 인덱스
+CREATE INDEX idx_messages_tenant    ON messages(tenant_id);
+CREATE INDEX idx_attachments_tenant ON attachments(tenant_id);
+CREATE INDEX idx_attachments_msg    ON attachments(message_pk);
+CREATE INDEX idx_articles_tenant    ON articles(tenant_id);
+CREATE INDEX idx_articles_att       ON articles(attachment_id);
+CREATE INDEX idx_images_tenant      ON images(tenant_id);
+CREATE INDEX idx_images_att         ON images(attachment_id);
+CREATE INDEX idx_images_article     ON images(article_id);

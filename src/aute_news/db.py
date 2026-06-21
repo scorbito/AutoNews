@@ -16,6 +16,9 @@ from psycopg.rows import dict_row
 
 load_dotenv()
 
+# 인증(2단계) 전까지의 기본 테넌트. 인증 후엔 호출부가 실제 tenant_id 를 넘긴다.
+DEFAULT_TENANT = 1
+
 _NAMED = re.compile(r":(\w+)")
 
 
@@ -55,67 +58,70 @@ def connect() -> _Conn:
     return _Conn(raw)
 
 
-def get_last_uid(conn, account: str, folder: str) -> int:
+def get_last_uid(conn, account: str, folder: str, tenant_id: int = DEFAULT_TENANT) -> int:
     row = conn.execute(
-        "SELECT last_uid FROM folder_state WHERE account=? AND folder=?",
-        (account, folder)).fetchone()
+        "SELECT last_uid FROM folder_state WHERE tenant_id=? AND account=? AND folder=?",
+        (tenant_id, account, folder)).fetchone()
     return row["last_uid"] if row else 0
 
 
-def set_last_uid(conn, account: str, folder: str, uid: int) -> None:
+def set_last_uid(conn, account: str, folder: str, uid: int,
+                 tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        """INSERT INTO folder_state (account, folder, last_uid) VALUES (?,?,?)
-           ON CONFLICT (account, folder) DO UPDATE SET last_uid=excluded.last_uid""",
-        (account, folder, uid))
+        """INSERT INTO folder_state (tenant_id, account, folder, last_uid) VALUES (?,?,?,?)
+           ON CONFLICT (tenant_id, account, folder) DO UPDATE SET last_uid=excluded.last_uid""",
+        (tenant_id, account, folder, uid))
 
 
 def insert_message(conn, **kw) -> int | None:
-    """메일 1건 저장. message_id 중복이면 건너뜀(None 반환)."""
+    """메일 1건 저장. (tenant_id, message_id) 중복이면 건너뜀(None). kw 에 tenant_id 필요."""
+    kw.setdefault("tenant_id", DEFAULT_TENANT)
     row = conn.execute(
-        """INSERT INTO messages (account, folder, uid, message_id, subject, sender, date, body_text)
-           VALUES (:account,:folder,:uid,:message_id,:subject,:sender,:date,:body_text)
-           ON CONFLICT (message_id) DO NOTHING
+        """INSERT INTO messages (tenant_id, account, folder, uid, message_id, subject, sender, date, body_text)
+           VALUES (:tenant_id,:account,:folder,:uid,:message_id,:subject,:sender,:date,:body_text)
+           ON CONFLICT (tenant_id, message_id) DO NOTHING
            RETURNING id""", kw).fetchone()
     return row["id"] if row else None
 
 
-def messages_to_triage(conn, only_new: bool = True) -> list:
-    q = "SELECT id, subject, sender, body_text FROM messages"
+def messages_to_triage(conn, only_new: bool = True, tenant_id: int = DEFAULT_TENANT) -> list:
+    q = "SELECT id, subject, sender, body_text FROM messages WHERE tenant_id=?"
     if only_new:
-        q += " WHERE pipeline IS NULL"
-    return conn.execute(q + " ORDER BY id").fetchall()
+        q += " AND pipeline IS NULL"
+    return conn.execute(q + " ORDER BY id", (tenant_id,)).fetchall()
 
 
-def message_attachments(conn, message_pk: int) -> list[dict]:
+def message_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list[dict]:
     rows = conn.execute(
-        "SELECT filename, format, size FROM attachments WHERE message_pk=? ORDER BY id",
-        (message_pk,)).fetchall()
+        "SELECT filename, format, size FROM attachments WHERE message_pk=? AND tenant_id=? ORDER BY id",
+        (message_pk, tenant_id)).fetchall()
     return [dict(r) for r in rows]
 
 
-def set_triage(conn, message_pk: int, pipeline: str,
-               confidence: float | None, reason: str) -> None:
+def set_triage(conn, message_pk: int, pipeline: str, confidence: float | None,
+               reason: str, tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        "UPDATE messages SET pipeline=?, triage_confidence=?, triage_reason=? WHERE id=?",
-        (pipeline, confidence, reason, message_pk))
+        "UPDATE messages SET pipeline=?, triage_confidence=?, triage_reason=? WHERE id=? AND tenant_id=?",
+        (pipeline, confidence, reason, message_pk, tenant_id))
 
 
 def insert_attachment(conn, **kw) -> int:
+    kw.setdefault("tenant_id", DEFAULT_TENANT)
     row = conn.execute(
-        """INSERT INTO attachments (message_pk, filename, format, path, size, extracted_text, extract_status)
-           VALUES (:message_pk,:filename,:format,:path,:size,:extracted_text,:extract_status)
+        """INSERT INTO attachments (tenant_id, message_pk, filename, format, path, size, extracted_text, extract_status)
+           VALUES (:tenant_id,:message_pk,:filename,:format,:path,:size,:extracted_text,:extract_status)
            RETURNING id""", kw).fetchone()
     return row["id"]
 
 
 # --- 기자 UI 용 조회/저장 (레거시 drafts) ---
 
-def list_items(conn, status: str | None = None) -> list:
-    where, params = "", []
+def list_items(conn, status: str | None = None, tenant_id: int = DEFAULT_TENANT) -> list:
+    where, params = "WHERE a.tenant_id=?", [tenant_id]
     if status == "none":
-        where = "WHERE d.status IS NULL"
+        where += " AND d.status IS NULL"
     elif status in ("draft", "reviewed", "published"):
-        where = "WHERE d.status = ?"
+        where += " AND d.status = ?"
         params.append(status)
     return conn.execute(
         f"""SELECT a.id, a.filename, a.format, a.extract_status,
@@ -128,17 +134,18 @@ def list_items(conn, status: str | None = None) -> list:
             ORDER BY a.id DESC""", params).fetchall()
 
 
-def status_counts(conn) -> dict:
+def status_counts(conn, tenant_id: int = DEFAULT_TENANT) -> dict:
     rows = conn.execute(
         """SELECT COALESCE(d.status,'none') s, COUNT(*) c
            FROM attachments a LEFT JOIN drafts d ON d.attachment_id=a.id
-           GROUP BY COALESCE(d.status,'none')""").fetchall()
+           WHERE a.tenant_id=?
+           GROUP BY COALESCE(d.status,'none')""", (tenant_id,)).fetchall()
     counts = {r["s"]: r["c"] for r in rows}
     counts["all"] = sum(counts.values())
     return counts
 
 
-def get_item(conn, att_id: int):
+def get_item(conn, att_id: int, tenant_id: int = DEFAULT_TENANT):
     return conn.execute(
         """SELECT a.id, a.filename, a.format, a.extract_status, a.extracted_text,
                   m.subject, m.sender, m.date,
@@ -147,141 +154,159 @@ def get_item(conn, att_id: int):
            FROM attachments a
            JOIN messages m ON m.id = a.message_pk
            LEFT JOIN drafts d ON d.attachment_id = a.id
-           WHERE a.id = ?""", (att_id,)).fetchone()
+           WHERE a.id = ? AND a.tenant_id = ?""", (att_id, tenant_id)).fetchone()
 
 
-def upsert_draft(conn, att_id: int, headline: str, content: str, status: str = "draft") -> None:
+def upsert_draft(conn, att_id: int, headline: str, content: str, status: str = "draft",
+                 tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        """INSERT INTO drafts (attachment_id, headline, content, status, updated_at)
-           VALUES (?,?,?,?, datetime('now'))
+        """INSERT INTO drafts (attachment_id, tenant_id, headline, content, status, updated_at)
+           VALUES (?,?,?,?,?, now())
            ON CONFLICT (attachment_id) DO UPDATE SET
                headline=excluded.headline, content=excluded.content,
                status=excluded.status, updated_at=now()""",
-        (att_id, headline, content, status))
+        (att_id, tenant_id, headline, content, status))
 
 
-def set_draft_status(conn, att_id: int, status: str) -> None:
+def set_draft_status(conn, att_id: int, status: str, tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        "UPDATE drafts SET status=?, updated_at=datetime('now') WHERE attachment_id=?",
-        (status, att_id))
+        "UPDATE drafts SET status=?, updated_at=now() WHERE attachment_id=? AND tenant_id=?",
+        (status, att_id, tenant_id))
 
 
 # --- 기사(Split 결과 단위) ---
 
-def clear_articles(conn, attachment_id: int) -> None:
-    conn.execute("DELETE FROM articles WHERE attachment_id=?", (attachment_id,))
+def clear_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> None:
+    conn.execute("DELETE FROM articles WHERE attachment_id=? AND tenant_id=?",
+                 (attachment_id, tenant_id))
 
 
 def insert_article(conn, **kw) -> int:
+    kw.setdefault("tenant_id", DEFAULT_TENANT)
     row = conn.execute(
-        """INSERT INTO articles (attachment_id, sequence_number, title, body,
+        """INSERT INTO articles (tenant_id, attachment_id, sequence_number, title, body,
                                  contact_info, category_hint, status)
-           VALUES (:attachment_id,:sequence_number,:title,:body,
+           VALUES (:tenant_id,:attachment_id,:sequence_number,:title,:body,
                    :contact_info,:category_hint,:status)
            RETURNING id""", kw).fetchone()
     return row["id"]
 
 
-def list_articles(conn, attachment_id: int) -> list:
+def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> list:
     return conn.execute(
-        "SELECT * FROM articles WHERE attachment_id=? ORDER BY sequence_number, id",
-        (attachment_id,)).fetchall()
+        "SELECT * FROM articles WHERE attachment_id=? AND tenant_id=? ORDER BY sequence_number, id",
+        (attachment_id, tenant_id)).fetchall()
 
 
-def get_article(conn, article_id: int):
-    return conn.execute("SELECT * FROM articles WHERE id=?", (article_id,)).fetchone()
+def get_article(conn, article_id: int, tenant_id: int = DEFAULT_TENANT):
+    return conn.execute("SELECT * FROM articles WHERE id=? AND tenant_id=?",
+                        (article_id, tenant_id)).fetchone()
 
 
 def update_article_generated(conn, article_id: int, *, headline: str, subtitle: str,
                              content_html: str, category_code: str, article_type: str,
-                             source_info: str, editor_notes: str) -> None:
+                             source_info: str, editor_notes: str,
+                             tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
         """UPDATE articles SET headline=?, subtitle=?, content_html=?, category_code=?,
-               article_type=?, source_info=?, editor_notes=?, status='drafted' WHERE id=?""",
+               article_type=?, source_info=?, editor_notes=?, status='drafted'
+           WHERE id=? AND tenant_id=?""",
         (headline, subtitle, content_html, category_code, article_type,
-         source_info, editor_notes, article_id))
+         source_info, editor_notes, article_id, tenant_id))
 
 
 def update_article_edit(conn, article_id: int, *, headline: str, subtitle: str,
-                        content_html: str, category_code: str) -> None:
+                        content_html: str, category_code: str,
+                        tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        "UPDATE articles SET headline=?, subtitle=?, content_html=?, category_code=? WHERE id=?",
-        (headline, subtitle, content_html, category_code, article_id))
+        "UPDATE articles SET headline=?, subtitle=?, content_html=?, category_code=? WHERE id=? AND tenant_id=?",
+        (headline, subtitle, content_html, category_code, article_id, tenant_id))
 
 
-def article_status_counts(conn) -> dict:
-    rows = conn.execute("SELECT status s, COUNT(*) c FROM articles GROUP BY status").fetchall()
+def article_status_counts(conn, tenant_id: int = DEFAULT_TENANT) -> dict:
+    rows = conn.execute(
+        "SELECT status s, COUNT(*) c FROM articles WHERE tenant_id=? GROUP BY status",
+        (tenant_id,)).fetchall()
     counts = {r["s"]: r["c"] for r in rows}
     counts["all"] = sum(counts.values())
     return counts
 
 
-def set_article_status(conn, article_id: int, status: str) -> None:
-    conn.execute("UPDATE articles SET status=? WHERE id=?", (status, article_id))
+def set_article_status(conn, article_id: int, status: str, tenant_id: int = DEFAULT_TENANT) -> None:
+    conn.execute("UPDATE articles SET status=? WHERE id=? AND tenant_id=?",
+                 (status, article_id, tenant_id))
 
 
-def mark_article_published(conn, article_id: int, url: str) -> None:
+def mark_article_published(conn, article_id: int, url: str, tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
-        "UPDATE articles SET status='published', published_url=?, published_at=now() WHERE id=?",
-        (url, article_id))
+        "UPDATE articles SET status='published', published_url=?, published_at=now() WHERE id=? AND tenant_id=?",
+        (url, article_id, tenant_id))
 
 
-def list_all_articles(conn, status: str | None = None) -> list:
+def list_all_articles(conn, status: str | None = None, tenant_id: int = DEFAULT_TENANT) -> list:
     q = ("SELECT ar.*, m.subject AS email_subject, m.sender AS email_from "
          "FROM articles ar "
          "LEFT JOIN attachments a ON a.id=ar.attachment_id "
-         "LEFT JOIN messages m ON m.id=a.message_pk")
-    params = []
+         "LEFT JOIN messages m ON m.id=a.message_pk "
+         "WHERE ar.tenant_id=?")
+    params = [tenant_id]
     if status and status != "all":
-        q += " WHERE ar.status=?"
+        q += " AND ar.status=?"
         params.append(status)
     return conn.execute(q + " ORDER BY ar.id DESC", params).fetchall()
 
 
-def assign_image_article(conn, image_id: int, article_id: int | None) -> None:
-    conn.execute("UPDATE images SET article_id=? WHERE id=?", (article_id, image_id))
+def assign_image_article(conn, image_id: int, article_id: int | None,
+                         tenant_id: int = DEFAULT_TENANT) -> None:
+    conn.execute("UPDATE images SET article_id=? WHERE id=? AND tenant_id=?",
+                 (article_id, image_id, tenant_id))
 
 
-def list_article_images(conn, article_id: int) -> list:
+def list_article_images(conn, article_id: int, tenant_id: int = DEFAULT_TENANT) -> list:
     return conn.execute(
-        "SELECT * FROM images WHERE article_id=? ORDER BY ord, id", (article_id,)).fetchall()
+        "SELECT * FROM images WHERE article_id=? AND tenant_id=? ORDER BY ord, id",
+        (article_id, tenant_id)).fetchall()
 
 
 # --- 이미지 ---
 
-def clear_images(conn, att_id: int) -> None:
-    conn.execute("DELETE FROM images WHERE attachment_id=?", (att_id,))
+def clear_images(conn, att_id: int, tenant_id: int = DEFAULT_TENANT) -> None:
+    conn.execute("DELETE FROM images WHERE attachment_id=? AND tenant_id=?", (att_id, tenant_id))
 
 
 def insert_image(conn, **kw) -> int:
+    kw.setdefault("tenant_id", DEFAULT_TENANT)
     row = conn.execute(
-        """INSERT INTO images (attachment_id, path, ext, width, height, bytes, kind, selected, caption, ord)
-           VALUES (:attachment_id,:path,:ext,:width,:height,:bytes,:kind,:selected,:caption,:ord)
+        """INSERT INTO images (tenant_id, attachment_id, path, ext, width, height, bytes, kind, selected, caption, ord)
+           VALUES (:tenant_id,:attachment_id,:path,:ext,:width,:height,:bytes,:kind,:selected,:caption,:ord)
            RETURNING id""", kw).fetchone()
     return row["id"]
 
 
-def list_images(conn, att_id: int) -> list:
+def list_images(conn, att_id: int, tenant_id: int = DEFAULT_TENANT) -> list:
     return conn.execute(
-        "SELECT * FROM images WHERE attachment_id=? ORDER BY ord, id", (att_id,)).fetchall()
+        "SELECT * FROM images WHERE attachment_id=? AND tenant_id=? ORDER BY ord, id",
+        (att_id, tenant_id)).fetchall()
 
 
-def set_image_selected(conn, image_id: int, selected: bool) -> None:
-    conn.execute("UPDATE images SET selected=? WHERE id=?", (1 if selected else 0, image_id))
+def set_image_selected(conn, image_id: int, selected: bool, tenant_id: int = DEFAULT_TENANT) -> None:
+    conn.execute("UPDATE images SET selected=? WHERE id=? AND tenant_id=?",
+                 (1 if selected else 0, image_id, tenant_id))
 
 
-def mark_published(conn, att_id: int, url: str) -> None:
+def mark_published(conn, att_id: int, url: str, tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
         """UPDATE drafts SET status='published', published_url=?,
-               published_at=now(), updated_at=now() WHERE attachment_id=?""",
-        (url, att_id))
+               published_at=now(), updated_at=now() WHERE attachment_id=? AND tenant_id=?""",
+        (url, att_id, tenant_id))
 
 
-def bulk_set_status(conn, att_ids: list[int], status: str) -> int:
+def bulk_set_status(conn, att_ids: list[int], status: str, tenant_id: int = DEFAULT_TENANT) -> int:
     if not att_ids:
         return 0
     placeholders = ",".join("?" * len(att_ids))
     cur = conn.execute(
-        f"UPDATE drafts SET status=?, updated_at=now() WHERE attachment_id IN ({placeholders})",
-        (status, *att_ids))
+        f"UPDATE drafts SET status=?, updated_at=now() "
+        f"WHERE tenant_id=? AND attachment_id IN ({placeholders})",
+        (status, tenant_id, *att_ids))
     return cur.rowcount
