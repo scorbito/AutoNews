@@ -252,7 +252,8 @@ def _publish_one(conn, att_id: int, tenant_id: int) -> bool:
         return False
     imgs = [{"path": im["path"], "caption": im["caption"]}
             for im in db.list_images(conn, att_id, tenant_id=tenant_id) if im["selected"]]
-    result = get_publisher().publish(att_id, row["headline"] or "", row["content"], imgs)
+    cfg = db.get_tenant_config(conn, tenant_id) or {}
+    result = get_publisher(cfg).publish(att_id, row["headline"] or "", row["content"], imgs)
     if result.ok:
         db.mark_published(conn, att_id, result.url, tenant_id=tenant_id)
     return result.ok

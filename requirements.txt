@@ -27,3 +27,6 @@ requests>=2.33.1
 
 # DB (Supabase PostgreSQL)
 psycopg[binary]>=3.2
+
+# 테넌트 비밀번호 암호화
+cryptography>=43

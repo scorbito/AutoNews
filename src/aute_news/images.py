@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -23,22 +24,21 @@ _MIN_SIDE = 150
 _PHOTO_SIDE = 500
 
 
-def match_images_to_articles(conn, attachment_id: int) -> dict:
+def match_images_to_articles(conn, attachment_id: int, tenant_id: int = db.DEFAULT_TENANT) -> dict:
     """추출된 이미지를 기사에 매칭 (이식명세 §6).
     단건이면 전부 그 기사로. 다건이면 파일명 번호(사진N-M / N_) 로 매칭, 실패 시 미매칭(검토)."""
-    from . import db
-    articles = db.list_articles(conn, attachment_id)
-    images = db.list_images(conn, attachment_id)
+    articles = db.list_articles(conn, attachment_id, tenant_id=tenant_id)
+    imgs = db.list_images(conn, attachment_id, tenant_id=tenant_id)
     stats = {"matched": 0, "unmatched": 0}
-    if not articles or not images:
+    if not articles or not imgs:
         return stats
 
     by_seq = {a["sequence_number"]: a["id"] for a in articles}
-    for im in images:
+    for im in imgs:
         if not im["selected"]:
             continue
         if len(articles) == 1:
-            db.assign_image_article(conn, im["id"], articles[0]["id"])
+            db.assign_image_article(conn, im["id"], articles[0]["id"], tenant_id=tenant_id)
             stats["matched"] += 1
             continue
         # 다건: 파일명에서 선두 번호 추출 (basename 기준, 폴더 prefix 무시)
@@ -47,7 +47,7 @@ def match_images_to_articles(conn, attachment_id: int) -> dict:
         m = re.search(r"(?:사진|photo)?\s*(\d+)[-_]", base) or re.match(r"\s*(\d+)", base)
         seq = int(m.group(1)) if m else None
         target = by_seq.get(seq)
-        db.assign_image_article(conn, im["id"], target)
+        db.assign_image_article(conn, im["id"], target, tenant_id=tenant_id)
         stats["matched" if target else "unmatched"] += 1
     return stats
 
@@ -60,10 +60,11 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
-def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = True) -> dict:
+def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = True,
+                   tenant_id: int = db.DEFAULT_TENANT) -> dict:
     """draft.images 를 저장·선별해 DB에 기록. 통계 반환."""
-    db.clear_images(conn, att_id)
-    dest_dir = IMG_DIR / str(att_id)
+    db.clear_images(conn, att_id, tenant_id=tenant_id)
+    dest_dir = IMG_DIR / str(tenant_id) / str(att_id)
     stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
 
     classify = None
@@ -100,7 +101,7 @@ def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = Tr
         path = dest_dir / f"{idx}.{img.ext}"
         path.write_bytes(img.data)
         db.insert_image(
-            conn, attachment_id=att_id, path=str(path), ext=img.ext,
+            conn, tenant_id=tenant_id, attachment_id=att_id, path=str(path), ext=img.ext,
             width=w, height=h, bytes=len(img.data), kind=kind,
             selected=1 if selected else 0, caption=caption, ord=idx,
         )

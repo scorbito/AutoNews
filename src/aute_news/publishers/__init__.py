@@ -10,12 +10,13 @@ from .base import Publisher, PublishResult
 from .export_html import HtmlExportPublisher
 
 
-def get_publisher() -> Publisher:
-    """활성 발행기 선택. 기본은 안전한 HTML 내보내기.
-    PUBLISHER=atpaju 로 설정해야 실제 사이트 발행기를 사용한다."""
-    if os.getenv("PUBLISHER", "html").lower() == "atpaju":
+def get_publisher(config: dict | None = None) -> Publisher:
+    """발행기 선택. config(테넌트 설정)의 publisher 우선, 없으면 .env PUBLISHER.
+    기본은 안전한 HTML 내보내기. 'atpaju' 면 ND소프트 발행기(config 로 사이트별 설정)."""
+    ptype = (config or {}).get("publisher") or os.getenv("PUBLISHER", "html")
+    if (ptype or "html").lower() == "atpaju":
         from .atpaju import AtpajuPublisher
-        return AtpajuPublisher()
+        return AtpajuPublisher(config)
     return HtmlExportPublisher()
 
 

@@ -29,7 +29,8 @@ def publish_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT):
         return None
     imgs = [{"path": i["path"], "caption": i["caption"] or ""}
             for i in db.list_article_images(conn, article_id, tenant_id=tenant_id)]
-    res = get_publisher().publish(
+    cfg = db.get_tenant_config(conn, tenant_id) or {}
+    res = get_publisher(cfg).publish(
         article_id, art["headline"] or "", art["content_html"], imgs,
         category=art["category_code"], subtitle=art["subtitle"] or "", body_is_html=True)
     if res and res.ok:
@@ -37,37 +38,40 @@ def publish_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT):
     return res
 
 
-def _split_and_generate(conn, attachment_id: int, text: str,
-                        subject: str, sender: str, mode: str) -> list[int]:
+def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sender: str,
+                        mode: str, tenant_id: int = db.DEFAULT_TENANT) -> list[int]:
     """추출 텍스트 → split → 이미지매칭 → generate → (auto면)발행. 기사 id 목록 반환."""
     res = run_split(text, subject=subject,
                     from_name=(sender or "").split("<")[0].strip(),
                     body_text_preview="")
     arts = res.get("articles", []) or []
-    db.clear_articles(conn, attachment_id)
+    db.clear_articles(conn, attachment_id, tenant_id=tenant_id)
     ids = []
     for a in arts:
         aid = db.insert_article(
-            conn, attachment_id=attachment_id, sequence_number=a.get("sequence_number", 1),
+            conn, tenant_id=tenant_id, attachment_id=attachment_id,
+            sequence_number=a.get("sequence_number", 1),
             title=a.get("title", ""), body=a.get("body", ""),
             contact_info=json.dumps(a.get("contact_info"), ensure_ascii=False),
             category_hint=a.get("category_hint"), status="split")
         ids.append(aid)
     conn.commit()
-    images.match_images_to_articles(conn, attachment_id)
+    images.match_images_to_articles(conn, attachment_id, tenant_id=tenant_id)
     for aid in ids:
-        articlegen.generate_for_article(conn, aid)
+        articlegen.generate_for_article(conn, aid, tenant_id=tenant_id)
         if mode == "auto":
-            publish_article(conn, aid)
+            publish_article(conn, aid, tenant_id=tenant_id)
     return ids
 
 
-def process_message(conn, message_pk: int, mode: str | None = None) -> dict:
+def process_message(conn, message_pk: int, mode: str | None = None,
+                    tenant_id: int = db.DEFAULT_TENANT) -> dict:
     mode = mode or _mode()
-    msg = conn.execute("SELECT * FROM messages WHERE id=?", (message_pk,)).fetchone()
+    msg = conn.execute("SELECT * FROM messages WHERE id=? AND tenant_id=?",
+                       (message_pk, tenant_id)).fetchone()
     if not msg:
         return {"error": "메일 없음"}
-    atts = db.message_attachments(conn, message_pk)
+    atts = db.message_attachments(conn, message_pk, tenant_id=tenant_id)
 
     # 1) Triage (없으면 수행)
     pipeline = msg["pipeline"]
@@ -76,7 +80,7 @@ def process_message(conn, message_pk: int, mode: str | None = None) -> dict:
         tri = run_triage(meta)
         pipeline = tri["pipeline"]
         db.set_triage(conn, message_pk, pipeline, tri.get("triage_confidence"),
-                      tri.get("reasoning", ""))
+                      tri.get("reasoning", ""), tenant_id=tenant_id)
 
     result = {"message_pk": message_pk, "pipeline": pipeline, "mode": mode, "articles": []}
 
@@ -86,20 +90,20 @@ def process_message(conn, message_pk: int, mode: str | None = None) -> dict:
 
     # 2) 본문 소스 확보
     att_rows = conn.execute(
-        "SELECT * FROM attachments WHERE message_pk=? AND extract_status='done'",
-        (message_pk,)).fetchall()
+        "SELECT * FROM attachments WHERE message_pk=? AND tenant_id=? AND extract_status='done'",
+        (message_pk, tenant_id)).fetchall()
 
     if pipeline == "BODY_AS_ARTICLE" or not att_rows:
-        # 메일 본문 자체를 보도자료로 → 합성(body) 첨부 1건
         body = msg["body_text"] or ""
         if len(body.strip()) < 50:
             result["skipped"] = "본문 부족"
             return result
-        pk = db.insert_attachment(conn, message_pk=message_pk, filename="(본문)",
-                                  format="body", path="", size=len(body),
+        pk = db.insert_attachment(conn, tenant_id=tenant_id, message_pk=message_pk,
+                                  filename="(본문)", format="body", path="", size=len(body),
                                   extracted_text=body, extract_status="done")
         conn.commit()
-        result["articles"] = _split_and_generate(conn, pk, body, msg["subject"], msg["sender"], mode)
+        result["articles"] = _split_and_generate(
+            conn, pk, body, msg["subject"], msg["sender"], mode, tenant_id)
         return result
 
     # 3) 첨부 기반: 본문 추출용 1건 선택
@@ -108,5 +112,5 @@ def process_message(conn, message_pk: int, mode: str | None = None) -> dict:
     if primary:
         chosen = next((r for r in att_rows if r["filename"] == primary["filename"]), att_rows[0])
     result["articles"] = _split_and_generate(
-        conn, chosen["id"], chosen["extracted_text"], msg["subject"], msg["sender"], mode)
+        conn, chosen["id"], chosen["extracted_text"], msg["subject"], msg["sender"], mode, tenant_id)
     return result

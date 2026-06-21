@@ -23,6 +23,24 @@ CREATE TABLE IF NOT EXISTS tenant_users (
 );
 CREATE INDEX IF NOT EXISTS idx_tenant_users_tenant ON tenant_users(tenant_id);
 
+-- 테넌트별 설정 (메일/CMS, 비밀번호는 Fernet 암호화 저장)
+CREATE TABLE IF NOT EXISTS tenant_config (
+    tenant_id          BIGINT PRIMARY KEY REFERENCES tenants(id),
+    imap_host          TEXT,
+    imap_email         TEXT,
+    imap_password_enc  TEXT,
+    imap_folders       TEXT,
+    publisher          TEXT NOT NULL DEFAULT 'html',
+    ndsoft_base_url    TEXT,
+    cms_user           TEXT,
+    cms_password_enc   TEXT,
+    cms_user_name      TEXT,
+    cms_user_email     TEXT,
+    cms_section        TEXT DEFAULT 'S1N10',
+    pipeline_mode      TEXT NOT NULL DEFAULT 'review',
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 기존 데이터 테이블 재생성(멀티테넌트). 빈 상태에서만 안전.
 DROP TABLE IF EXISTS drafts, images, articles, attachments, messages, folder_state CASCADE;
 

@@ -14,6 +14,8 @@ import psycopg
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
+from . import crypto
+
 load_dotenv()
 
 # 인증(2단계) 전까지의 기본 테넌트. 인증 후엔 호출부가 실제 tenant_id 를 넘긴다.
@@ -56,6 +58,40 @@ def connect() -> _Conn:
         raise RuntimeError("DATABASE_URL 이 .env 에 없습니다 (Supabase 연결 문자열).")
     raw = psycopg.connect(url, autocommit=True, row_factory=dict_row, connect_timeout=15)
     return _Conn(raw)
+
+
+# --- 테넌트 설정(메일/CMS, 비밀번호 암호화) ---
+
+_CFG_COLS = ("imap_host", "imap_email", "imap_folders", "publisher", "ndsoft_base_url",
+             "cms_user", "cms_user_name", "cms_user_email", "cms_section", "pipeline_mode")
+
+
+def get_tenant_config(conn, tenant_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM tenant_config WHERE tenant_id=?", (tenant_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["imap_password"] = crypto.decrypt(d.pop("imap_password_enc", None))
+    d["cms_password"] = crypto.decrypt(d.pop("cms_password_enc", None))
+    return d
+
+
+def set_tenant_config(conn, tenant_id: int, *, imap_password: str | None = None,
+                      cms_password: str | None = None, **fields) -> None:
+    """테넌트 설정 upsert. 제공된 필드만 갱신(None은 기존값 유지). 비번은 암호화."""
+    cols = {k: v for k, v in fields.items() if k in _CFG_COLS}
+    if imap_password is not None:
+        cols["imap_password_enc"] = crypto.encrypt(imap_password)
+    if cms_password is not None:
+        cols["cms_password_enc"] = crypto.encrypt(cms_password)
+    names = ["tenant_id", *cols.keys()]
+    placeholders = ",".join(["?"] * len(names))
+    updates = ", ".join(f"{c}=COALESCE(excluded.{c}, tenant_config.{c})" for c in cols)
+    updates = (updates + ", " if updates else "") + "updated_at=now()"
+    conn.execute(
+        f"INSERT INTO tenant_config ({','.join(names)}) VALUES ({placeholders}) "
+        f"ON CONFLICT (tenant_id) DO UPDATE SET {updates}",
+        (tenant_id, *cols.values()))
 
 
 def get_last_uid(conn, account: str, folder: str, tenant_id: int = DEFAULT_TENANT) -> int:

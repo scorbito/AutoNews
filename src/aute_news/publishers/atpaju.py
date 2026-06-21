@@ -59,13 +59,16 @@ def _split_subtitle(content: str) -> tuple[str, str]:
 class AtpajuPublisher(Publisher):
     name = "atpaju"
 
-    def __init__(self) -> None:
-        self.base = os.getenv("NDSOFT_BASE_URL", DEFAULT_BASE).rstrip("/")
-        self.uid = os.getenv("ATPAJU_ID", "")
-        self.pw = os.getenv("ATPAJU_PW", "")
-        self.user_name = os.getenv("ATPAJU_USER_NAME", "작업자")
-        self.user_email = os.getenv("ATPAJU_USER_EMAIL", "")
-        self.section = os.getenv("ATPAJU_SECTION", "S1N10")  # 기본 미분류(명세 §7)
+    def __init__(self, config: dict | None = None) -> None:
+        # 테넌트 설정 우선, 없으면 .env 폴백(레거시/CLI)
+        c = config or {}
+        self.base = (c.get("ndsoft_base_url") or os.getenv("NDSOFT_BASE_URL", DEFAULT_BASE)).rstrip("/")
+        self.uid = c.get("cms_user") or os.getenv("ATPAJU_ID", "")
+        self.pw = c.get("cms_password") or os.getenv("ATPAJU_PW", "")
+        self.user_name = c.get("cms_user_name") or os.getenv("ATPAJU_USER_NAME", "작업자")
+        self.user_email = c.get("cms_user_email") or os.getenv("ATPAJU_USER_EMAIL", "")
+        self.section = c.get("cms_section") or os.getenv("ATPAJU_SECTION", "S1N10")
+        # 실제 게시 스위치는 전역(.env)으로 유지 + HARD_DISABLE_LIVE 안전잠금
         self.live = os.getenv("ATPAJU_LIVE", "") in ("1", "true", "True")
 
     def _login(self, s: requests.Session) -> None:

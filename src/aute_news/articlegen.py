@@ -82,9 +82,9 @@ def generate(body_text: str, *, email_subject: str = "", email_from: str = "",
     return get_llm().complete_json(system, user, temperature=0.3)
 
 
-def generate_for_article(conn, article_id: int) -> dict:
+def generate_for_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT) -> dict:
     """articles 행 1건 기사화 후 DB 갱신."""
-    art = db.get_article(conn, article_id)
+    art = db.get_article(conn, article_id, tenant_id=tenant_id)
     if not art:
         raise ValueError(f"article {article_id} 없음")
     # 출처 메일 메타
@@ -92,11 +92,11 @@ def generate_for_article(conn, article_id: int) -> dict:
     if art["attachment_id"]:
         row = conn.execute(
             """SELECT m.subject, m.sender, m.date FROM attachments a
-               JOIN messages m ON m.id=a.message_pk WHERE a.id=?""",
-            (art["attachment_id"],)).fetchone()
+               JOIN messages m ON m.id=a.message_pk WHERE a.id=? AND a.tenant_id=?""",
+            (art["attachment_id"], tenant_id)).fetchone()
         if row:
             subject, sender, date = row["subject"], row["sender"], row["date"]
-    imgs = db.list_article_images(conn, article_id)
+    imgs = db.list_article_images(conn, article_id, tenant_id=tenant_id)
     images_meta = [{"fileName": __import__("os").path.basename(i["path"] or ""),
                     "source": "email_attachment"} for i in imgs]
 
@@ -113,5 +113,6 @@ def generate_for_article(conn, article_id: int) -> dict:
         category_code=normalize_category(res.get("category_code")),
         article_type=res.get("article_type", ""),
         source_info=json.dumps(res.get("source_info", {}), ensure_ascii=False),
-        editor_notes=json.dumps(res.get("editor_notes", {}), ensure_ascii=False))
+        editor_notes=json.dumps(res.get("editor_notes", {}), ensure_ascii=False),
+        tenant_id=tenant_id)
     return res
