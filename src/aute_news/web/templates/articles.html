@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}기사 목록{% endblock %}
+{% block body %}
+<h2>기사 <span class="muted">({{ arts|length }}건)</span>
+   <a href="/legacy" class="muted" style="font-size:13px; float:right;">레거시(첨부 기준) →</a></h2>
+
+<div class="row" style="margin-bottom:14px;">
+  {% for key, name in filters %}
+    <a href="/?status={{ key }}"
+       class="tag {% if active == key %}s-published{% else %}s-pending{% endif %}"
+       style="text-decoration:none; padding:6px 12px;">
+      {{ name }} {{ counts.get(key if key!='all' else 'all', 0) }}
+    </a>
+  {% endfor %}
+</div>
+
+<table>
+  <thead><tr><th>#</th><th>제목</th><th>카테고리</th><th>상태</th><th>출처 메일</th></tr></thead>
+  <tbody>
+  {% for a in arts %}
+    <tr>
+      <td>{{ a.id }}</td>
+      <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
+      <td class="muted">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
+      <td><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
+      <td class="muted">{{ a.email_subject or '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if not arts %}<p class="muted">아직 기사가 없습니다. <code>python scripts/process.py</code> 로 파이프라인을 돌리세요.</p>{% endif %}
+{% endblock %}

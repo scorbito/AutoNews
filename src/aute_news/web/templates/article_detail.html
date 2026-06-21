@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ a.headline or '기사' }}{% endblock %}
+{% block body %}
+<p><a href="/">← 기사 목록</a>
+   · 상태 <span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span>
+   {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}</p>
+
+<div class="grid">
+  <!-- 좌: 편집 -->
+  <div class="card">
+    <h3>기사 편집</h3>
+    <form method="post" action="/a/{{ a.id }}/save">
+      <label>제목</label>
+      <input type="text" name="headline" value="{{ a.headline or '' }}">
+      <label>부제</label>
+      <input type="text" name="subtitle" value="{{ a.subtitle or '' }}">
+      <label>카테고리</label>
+      <select name="category_code">
+        {% for code, name in cats.items() %}
+          <option value="{{ code }}" {% if a.category_code==code %}selected{% endif %}>{{ code }} {{ name }}</option>
+        {% endfor %}
+      </select>
+      <label>본문 (HTML)</label>
+      <textarea name="content_html">{{ a.content_html or '' }}</textarea>
+      <div class="row"><button type="submit">💾 저장</button></div>
+    </form>
+    <div class="row">
+      <form method="post" action="/a/{{ a.id }}/review"><button class="gray" type="submit">✓ 검토완료</button></form>
+      <form method="post" action="/a/{{ a.id }}/publish"><button class="green" type="submit">🚀 발행</button></form>
+    </div>
+    <p class="muted">※ 발행기는 기본 HTML 내보내기. atpaju 실발행은 하드잠금 상태.</p>
+  </div>
+
+  <!-- 우: 미리보기 + 메타 + 이미지 -->
+  <div class="card">
+    <h3>미리보기</h3>
+    <div style="border:1px solid #eee; border-radius:6px; padding:14px; line-height:1.8;">
+      <strong style="font-size:18px;">{{ a.headline }}</strong>
+      {% if a.subtitle %}<div class="muted" style="margin:4px 0 10px;">{{ a.subtitle }}</div>{% endif %}
+      {{ a.content_html|safe }}
+    </div>
+
+    {% if source_info %}
+    <h3 style="margin-top:18px;">출처 정보</h3>
+    <p class="muted">기관: {{ source_info.organization or '-' }} ·
+       담당: {{ source_info.contact_person or '-' }} {{ source_info.contact or '' }}
+       {% if source_info.requested_pub_date %}· 보도일 {{ source_info.requested_pub_date }}{% endif %}</p>
+    {% endif %}
+
+    {% if editor_notes and (editor_notes.warnings or editor_notes.verify_needed or editor_notes.missing_5w1h) %}
+    <h3>편집자 확인</h3>
+    {% for w in editor_notes.warnings %}<p class="block">⚠️ {{ w }}</p>{% endfor %}
+    {% for v in editor_notes.verify_needed %}<p class="muted">· 확인: {{ v }}</p>{% endfor %}
+    {% for m in editor_notes.missing_5w1h %}<p class="muted">· 누락: {{ m }}</p>{% endfor %}
+    {% endif %}
+
+    {% if images %}
+    <h3>매칭 이미지 ({{ images|length }})</h3>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      {% for im in images %}<img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

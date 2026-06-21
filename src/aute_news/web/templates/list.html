@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}수집 목록{% endblock %}
+{% block body %}
+<h2>수집 기사 목록 <span class="muted">({{ items|length }}건)</span></h2>
+
+<div class="row" style="margin-bottom:14px;">
+  {% for key, name in filters %}
+    <a href="/?status={{ key }}"
+       class="tag {% if active == key %}s-published{% else %}s-pending{% endif %}"
+       style="text-decoration:none; padding:6px 12px;">
+      {{ name }} {{ counts.get(key if key != 'all' else 'all', 0) }}
+    </a>
+  {% endfor %}
+</div>
+
+<form method="post" action="/bulk">
+  <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
+    <span class="muted">체크한 기사를 일괄:</span>
+    <button type="submit" name="action" value="generate">⚡ 초안 생성</button>
+    <button class="gray" type="submit" name="action" value="review">✓ 검토완료</button>
+    <button class="green" type="submit" name="action" value="publish">🚀 선택 발행</button>
+    <span class="muted" id="selcount">0건 선택</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="checkall" title="전체선택"></th>
+        <th>#</th><th>제목/파일</th><th>발신</th><th>형식</th><th>추출</th><th>초안</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+      <tr>
+        <td>
+          {% if it.extract_status == 'done' %}
+            <input type="checkbox" class="sel" name="ids" value="{{ it.id }}">
+          {% else %}
+            <span class="muted" title="추출완료된 항목만 선택 가능">–</span>
+          {% endif %}
+        </td>
+        <td>{{ it.id }}</td>
+        <td>
+          <a href="/item/{{ it.id }}">{{ it.headline or it.subject or it.filename }}</a>
+          <div class="muted">{{ it.filename }}</div>
+        </td>
+        <td class="muted">{{ it.sender }}<br>{{ it.date }}</td>
+        <td>{{ it.format }}</td>
+        <td><span class="tag s-{{ it.extract_status }}">{{ it.extract_status }}</span></td>
+        <td>
+          {% if it.draft_status %}
+            <a href="/article/{{ it.id }}" style="text-decoration:none;">
+              <span class="tag s-{{ it.draft_status }}">{{ label[it.draft_status] }}</span>
+            </a>
+          {% else %}
+            <span class="tag s-pending">{{ label[None] }}</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
+
+<script>
+  const boxes = () => Array.from(document.querySelectorAll('.sel'));
+  const count = () => {
+    const n = boxes().filter(b => b.checked).length;
+    document.getElementById('selcount').textContent = n + '건 선택';
+  };
+  document.getElementById('checkall').addEventListener('change', e => {
+    boxes().forEach(b => b.checked = e.target.checked); count();
+  });
+  document.addEventListener('change', e => { if (e.target.classList.contains('sel')) count(); });
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ it.headline or '기사' }}{% endblock %}
+{% block body %}
+<p><a href="/">← 목록</a>
+   {% if it.draft_status %}· <a href="/item/{{ it.id }}">✎ 편집</a>{% endif %}
+   · 상태 <span class="tag s-{{ it.draft_status or 'pending' }}">{{ label[it.draft_status] }}</span></p>
+
+{% if body_html %}
+  <div class="card" style="max-width:760px; margin:0 auto;">
+    <div class="muted" style="margin-bottom:12px;">
+      원본: {{ it.filename }} · {{ it.sender }} · {{ it.date }}
+    </div>
+    {% if it.published_url %}
+    <div class="tag s-published" style="display:block; margin-bottom:14px; padding:8px 12px;">
+      🚀 발행됨 ({{ it.published_at }}) · 결과: <code>{{ it.published_url }}</code>
+    </div>
+    {% endif %}
+    <article class="article">{{ body_html|safe }}</article>
+    {% if images %}
+    <div style="margin-top:18px;">
+      {% for im in images %}
+      <figure style="margin:16px 0;">
+        <img src="/img/{{ im.id }}" style="max-width:100%; border-radius:6px;">
+        {% if im.caption %}<figcaption class="muted" style="text-align:center; font-size:14px;">{{ im.caption }}</figcaption>{% endif %}
+      </figure>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+{% else %}
+  <p class="muted">아직 작성된 기사가 없습니다. <a href="/item/{{ it.id }}">상세에서 초안을 생성</a>하세요.</p>
+{% endif %}
+
+<style>
+  .article h1 { font-size: 26px; line-height: 1.3; margin: 0 0 6px; }
+  .article h2.sub { font-size: 17px; color: #555; font-weight: 500; margin: 0 0 20px;
+                    padding-bottom: 14px; border-bottom: 1px solid #eee; }
+  .article p { line-height: 1.85; font-size: 16px; margin: 0 0 14px; }
+  .article p.block { color: #444; background: #f7f8fa; padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+  .article ul { margin: 0 0 14px; padding-left: 22px; }
+  .article li { line-height: 1.8; }
+</style>
+{% endblock %}

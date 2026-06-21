@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ it.filename }}{% endblock %}
+{% block body %}
+<p><a href="/">← 목록</a></p>
+<h2>{{ it.headline or it.subject or it.filename }}</h2>
+<p class="muted">{{ it.filename }} · {{ it.sender }} · {{ it.date }}
+   · 추출 <span class="tag s-{{ it.extract_status }}">{{ it.extract_status }}</span>
+   · 초안 <span class="tag s-{{ it.draft_status or 'pending' }}">{{ label[it.draft_status] }}</span></p>
+
+<div class="grid">
+  <!-- 좌: 추출 원문 -->
+  <div class="card">
+    <h3>추출 원문 ({{ it.format }})</h3>
+    {% if it.extracted_text %}
+      <pre>{{ it.extracted_text }}</pre>
+    {% else %}
+      <p class="muted">추출 텍스트 없음 (수동 처리 대상 / 미지원 형식).</p>
+    {% endif %}
+  </div>
+
+  <!-- 우: 기사 초안 / 이미지 -->
+  <div class="card">
+    <h3>기사 초안</h3>
+    {% if not it.content %}
+      {% if it.extracted_text %}
+        <p class="muted">아직 초안이 없습니다. Gemini로 생성하세요.</p>
+        <form method="post" action="/item/{{ it.id }}/generate">
+          <button type="submit">⚡ 초안 생성 (Gemini)</button>
+        </form>
+      {% else %}
+        <p class="muted">추출 원문이 없어 생성할 수 없습니다.</p>
+      {% endif %}
+    {% else %}
+      <form method="post" action="/item/{{ it.id }}/save">
+        <label>제목</label>
+        <input type="text" name="headline" value="{{ it.headline }}">
+        <label>본문 (편집 가능)</label>
+        <textarea name="content">{{ it.content }}</textarea>
+        <div class="row">
+          <button type="submit">💾 저장</button>
+        </div>
+      </form>
+      <div class="row">
+        <form method="post" action="/item/{{ it.id }}/generate">
+          <button class="gray" type="submit">↻ 재생성</button>
+        </form>
+        <form method="post" action="/item/{{ it.id }}/status">
+          <input type="hidden" name="status" value="reviewed">
+          <button class="gray" type="submit">✓ 검토완료</button>
+        </form>
+        <form method="post" action="/item/{{ it.id }}/status">
+          <input type="hidden" name="status" value="published">
+          <button class="green" type="submit">🚀 발행 (대기)</button>
+        </form>
+      </div>
+      <p class="muted">※ 발행 시 아래에서 선택한 이미지가 기사에 함께 들어갑니다.</p>
+    {% endif %}
+
+    {% if images %}
+    <h3 style="margin-top:22px;">이미지 ({{ images|length }}) — 기사에 넣을 사진 선택</h3>
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px;">
+      {% for im in images %}
+      <div style="border:1px solid {% if im.selected %}#137333{% else %}#eee{% endif %};
+                  border-radius:8px; padding:8px; text-align:center;">
+        <img src="/img/{{ im.id }}" style="max-width:100%; max-height:140px; object-fit:contain;">
+        <div class="muted" style="font-size:12px;">
+          {{ im.width }}×{{ im.height }} ·
+          <span class="tag {% if im.kind=='photo' %}s-done{% else %}s-manual{% endif %}">{{ im.kind }}</span>
+        </div>
+        <form method="post" action="/image/{{ im.id }}/toggle">
+          <input type="hidden" name="att_id" value="{{ it.id }}">
+          <input type="hidden" name="selected" value="{{ 0 if im.selected else 1 }}">
+          <button type="submit" class="{% if im.selected %}green{% else %}gray{% endif %}"
+                  style="margin-top:6px; font-size:12px; padding:5px 10px;">
+            {% if im.selected %}✓ 기사에 포함됨{% else %}+ 기사에 넣기{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
