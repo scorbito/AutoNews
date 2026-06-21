@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import articlegen, auth, db
+from .. import admin, articlegen, auth, db
 from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
@@ -106,7 +106,8 @@ def login_post(request: Request, email: str = Form(...), password: str = Form(..
     if not tid:
         return RedirectResponse("/login?error=2", status_code=303)
     request.session.update({"user_id": user["id"], "email": user["email"],
-                            "tenant_id": tid, "role": role})
+                            "tenant_id": tid, "role": role,
+                            "is_admin": admin.is_admin(user["email"])})
     return RedirectResponse("/", status_code=303)
 
 
@@ -114,6 +115,67 @@ def login_post(request: Request, email: str = Form(...), password: str = Form(..
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+# ── 관리자(SaaS 운영자) ───────────────────────────────
+def _require_admin(request: Request) -> bool:
+    return bool(request.session.get("is_admin"))
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_home(request: Request, msg: str = ""):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    conn = db.connect()
+    tenants = admin.list_tenants(conn)
+    conn.close()
+    return templates.TemplateResponse(
+        request, "admin.html", {"tenants": tenants, "cats": CATEGORY_CODES, "msg": msg})
+
+
+@app.post("/admin/tenant")
+def admin_create(request: Request, name: str = Form(...), email: str = Form(...),
+                 password: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    conn = db.connect()
+    try:
+        tid, _ = admin.create_account(conn, name, email, password)
+        msg = f"신문사 '{name}' 생성 (tenant {tid}, {email})"
+    except Exception as e:  # noqa: BLE001
+        msg = f"실패: {e}"
+    conn.close()
+    return RedirectResponse(f"/admin?msg={msg}", status_code=303)
+
+
+@app.post("/admin/config/{tid}")
+async def admin_config(request: Request, tid: int):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    form = await request.form()
+    kw = {k: v for k, v in form.items() if v not in (None, "")}
+    conn = db.connect()
+    db.set_tenant_config(conn, tid, **kw)
+    conn.close()
+    return RedirectResponse(f"/admin?msg=테넌트 {tid} 설정 저장", status_code=303)
+
+
+@app.post("/admin/collect/{tid}")
+def admin_collect(request: Request, tid: int):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    stats = admin.collect_tenant(tid)
+    return RedirectResponse(f"/admin?msg=수집: {stats}", status_code=303)
+
+
+@app.post("/admin/process/{tid}")
+def admin_process(request: Request, tid: int):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    conn = db.connect()
+    made = admin.process_tenant(conn, tid)
+    conn.close()
+    return RedirectResponse(f"/admin?msg=처리 완료: 기사 {made}건 생성", status_code=303)
 
 
 # ── 기사(articles) ────────────────────────────────────

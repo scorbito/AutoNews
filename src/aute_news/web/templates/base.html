@@ -42,6 +42,7 @@
   <header style="display:flex; justify-content:space-between; align-items:center;">
     <a href="/">📰 aute_news — 기자 검토</a>
     <span style="font-size:13px; font-weight:400;">
+      {% if request.session.get('is_admin') %}<a href="/admin" style="margin-right:12px;">관리자</a>{% endif %}
       {{ request.session.get('email','') }}
       <a href="/logout" style="margin-left:12px;">로그아웃</a>
     </span>
