@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block title %}기사 목록{% endblock %}
 {% block body %}
-<h2>기사 <span class="muted">({{ arts|length }}건)</span>
-   <a href="/legacy" class="muted" style="font-size:13px; float:right;">레거시(첨부 기준) →</a></h2>
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <h2 style="margin:0;">기사 <span class="muted">({{ arts|length }}건)</span></h2>
+  <div class="row">
+    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+    <a href="/legacy" style="font-size:13px;">수집 작업(수동) →</a>
+    <a href="/settings" style="font-size:13px;">⚙ 내 설정</a>
+  </div>
+</div>
 
 <div class="row" style="margin-bottom:14px;">
   {% for key, name in filters %}

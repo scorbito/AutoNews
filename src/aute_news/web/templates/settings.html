@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}내 설정{% endblock %}
+{% block body %}
+<p><a href="/">← 기사 목록</a></p>
+<h2>내 설정 — 자동 수집·발행</h2>
+
+<div class="card" style="max-width:560px;">
+  {% if not has_mail %}
+  <p class="block">⚠️ 아직 메일 연결이 안 돼 있습니다. 관리자에게 메일 설정을 요청하세요.
+     (메일이 설정돼야 수집·자동모드가 동작합니다.)</p>
+  {% endif %}
+  <form method="post" action="/settings">
+    <label>자동 모드</label>
+    <select name="auto_mode">
+      <option value="0" {% if not auto_on %}selected{% endif %}>끄기 (수동: 내가 수집·검토·발행)</option>
+      <option value="1" {% if auto_on %}selected{% endif %}>켜기 (설정 시간에 자동 수집→기사화→발행)</option>
+    </select>
+    <label>수집 시간 (KST, 시:분 · 쉼표 구분)</label>
+    <input type="text" name="collect_times" value="{{ collect_times }}" placeholder="09:00,15:00">
+    <div class="row"><button type="submit">💾 저장</button></div>
+  </form>
+  <p class="muted" style="margin-top:12px;">
+    · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
+    · <b>자동(켜기)</b>: 설정한 시간에 메일의 모든 자료가 자동으로 기사화·발행됩니다.
+  </p>
+</div>
+{% endblock %}

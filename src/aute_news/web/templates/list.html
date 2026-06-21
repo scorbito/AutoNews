@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block title %}수집 목록{% endblock %}
 {% block body %}
-<h2>수집 기사 목록 <span class="muted">({{ items|length }}건)</span></h2>
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <h2 style="margin:0;">수집 작업 (수동) <span class="muted">({{ items|length }}건)</span></h2>
+  <div class="row">
+    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+    <a href="/" style="font-size:13px;">← 기사 목록</a>
+  </div>
+</div>
+{% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 <div class="row" style="margin-bottom:14px;">
   {% for key, name in filters %}

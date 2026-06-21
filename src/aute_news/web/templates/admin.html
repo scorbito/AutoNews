@@ -33,6 +33,13 @@
     </div>
   </div>
 
+  <form method="post" action="/admin/tenant/{{ t.id }}/user" class="row" style="margin-top:8px;">
+    <span class="muted" style="font-size:12px;">기자 추가:</span>
+    <input type="email" name="email" placeholder="기자 이메일" required style="width:180px;">
+    <input type="text" name="password" placeholder="초기 비번" required style="width:140px;">
+    <button type="submit" class="gray" style="font-size:12px; padding:5px 10px;">+ 기자</button>
+  </form>
+
   <details style="margin-top:10px;">
     <summary class="muted" style="cursor:pointer;">설정 (메일 · CMS)</summary>
     <form method="post" action="/admin/config/{{ t.id }}" style="margin-top:10px;">

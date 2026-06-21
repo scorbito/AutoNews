@@ -148,6 +148,20 @@ def admin_create(request: Request, name: str = Form(...), email: str = Form(...)
     return RedirectResponse(f"/admin?msg={msg}", status_code=303)
 
 
+@app.post("/admin/tenant/{tid}/user")
+def admin_add_user(request: Request, tid: int, email: str = Form(...), password: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    conn = db.connect()
+    try:
+        admin.add_user(conn, tid, email, password)
+        msg = f"기자 추가: {email} → 신문사 {tid}"
+    except Exception as e:  # noqa: BLE001
+        msg = f"실패: {e}"
+    conn.close()
+    return RedirectResponse(f"/admin?msg={msg}", status_code=303)
+
+
 @app.post("/admin/config/{tid}")
 async def admin_config(request: Request, tid: int):
     if not _require_admin(request):
@@ -192,6 +206,46 @@ def index(request: Request, status: str = "all"):
         request, "articles.html",
         {"arts": arts, "astatus": ASTATUS, "filters": AFILTERS, "counts": counts,
          "active": status, "cats": CATEGORY_CODES, "email": request.session.get("email")})
+
+
+@app.post("/collect")
+def collect_now(request: Request):
+    """기자가 본인 신문사 메일을 지금 수집."""
+    from ..collector import collect_for_tenant
+    try:
+        stats = collect_for_tenant(_tenant(request))
+    except Exception as e:  # noqa: BLE001 (메일 로그인 실패 등)
+        return RedirectResponse(f"/legacy?msg=수집 실패: {type(e).__name__}", status_code=303)
+    if stats.get("skipped"):
+        msg = f"수집 불가: {stats['skipped']} (관리자에게 메일 설정 요청)"
+    else:
+        msg = (f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, "
+               f"첨부 {stats.get('attachments', 0)}개")
+    return RedirectResponse(f"/legacy?msg={msg}", status_code=303)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_form(request: Request):
+    conn = db.connect()
+    cfg = db.get_tenant_config(conn, _tenant(request)) or {}
+    conn.close()
+    auto_on = bool(cfg.get("collect_enabled")) and (cfg.get("pipeline_mode") == "auto")
+    return templates.TemplateResponse(
+        request, "settings.html",
+        {"auto_on": auto_on, "collect_times": cfg.get("collect_times") or "",
+         "has_mail": bool(cfg.get("imap_host"))})
+
+
+@app.post("/settings")
+def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: str = Form("")):
+    on = auto_mode == "1"
+    conn = db.connect()
+    db.set_tenant_config(conn, _tenant(request),
+                         collect_enabled=1 if on else 0,
+                         pipeline_mode="auto" if on else "review",
+                         collect_times=collect_times.strip())
+    conn.close()
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)
@@ -252,7 +306,7 @@ def serve_img(request: Request, image_id: int):
 
 # ── 레거시(첨부 기준 drafts) ──────────────────────────
 @app.get("/legacy", response_class=HTMLResponse)
-def index_legacy(request: Request, status: str = "all"):
+def index_legacy(request: Request, status: str = "all", msg: str = ""):
     t = _tenant(request)
     conn = db.connect()
     items = db.list_items(conn, None if status == "all" else status, tenant_id=t)
@@ -261,7 +315,7 @@ def index_legacy(request: Request, status: str = "all"):
     return templates.TemplateResponse(
         request, "list.html",
         {"items": items, "label": STATUS_LABEL, "filters": FILTERS,
-         "counts": counts, "active": status})
+         "counts": counts, "active": status, "msg": msg})
 
 
 @app.get("/item/{att_id}", response_class=HTMLResponse)
