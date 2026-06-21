@@ -10,8 +10,7 @@ import html
 from pathlib import Path
 
 from .base import Publisher, PublishResult
-
-OUT = Path(__file__).resolve().parents[3] / "data" / "published"
+from ..storage import get_storage, mime_for
 
 
 def _content_to_html(content: str) -> str:
@@ -45,17 +44,15 @@ class HtmlExportPublisher(Publisher):
                 images: list[dict] | None = None, *, category: str | None = None,
                 subtitle: str = "", body_is_html: bool = False) -> PublishResult:
         att_id = ref_id
-        OUT.mkdir(parents=True, exist_ok=True)
         body_block = content if body_is_html else _content_to_html(content)
         # 선택된 이미지를 data URI 로 임베드(파일 이동 없이 단일 HTML 완결)
         figs = []
         for im in images or []:
-            try:
-                raw = Path(im["path"]).read_bytes()
-            except OSError:
+            raw = get_storage().get(im["path"])
+            if not raw:
                 continue
             ext = Path(im["path"]).suffix.lstrip(".").lower() or "png"
-            mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+            mime = mime_for(ext)
             b64 = base64.b64encode(raw).decode()
             cap = html.escape(im.get("caption") or "")
             figs.append(f"<figure><img src='data:{mime};base64,{b64}' style='max-width:100%'>"
@@ -73,6 +70,6 @@ class HtmlExportPublisher(Publisher):
             + (f"<h2>{html.escape(subtitle)}</h2>" if subtitle else "")
             + f"\n{body_block}\n{img_html}\n</body></html>"
         )
-        path = OUT / f"{att_id}.html"
-        path.write_text(page, encoding="utf-8")
-        return PublishResult(ok=True, url=str(path))
+        key = f"published/{att_id}.html"
+        get_storage().put(key, page.encode("utf-8"), "text/html")
+        return PublishResult(ok=True, url=key)

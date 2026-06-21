@@ -13,12 +13,12 @@ from dotenv import load_dotenv
 from imap_tools import AND, MailBox
 
 from . import db, images
-from .extractors import ExtractError, detect_format, extract_file
+from .extractors import ExtractError, detect_format, extract_bytes
+from .storage import get_storage, mime_for
 
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[2]
-ATTACH_DIR = ROOT / "data" / "attachments"
 
 
 def _folders(env_key: str, default: str) -> list[str]:
@@ -67,14 +67,13 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
 
                 for att in msg.attachments:
                     fmt = detect_format(att.filename)
-                    dest = ATTACH_DIR / str(tenant_id) / account / f"{uid}_{_safe_name(att.filename)}"
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(att.payload)
+                    key = f"attachments/{tenant_id}/{account}/{uid}_{_safe_name(att.filename)}"
+                    get_storage().put(key, att.payload, mime_for(fmt))
                     stats["attachments"] += 1
 
                     extracted_text, status, draft = None, "pending", None
                     try:
-                        draft = extract_file(str(dest), att.filename)
+                        draft = extract_bytes(att.payload, att.filename)
                         extracted_text, status = draft.body_text, "done"
                         stats["extracted"] += 1
                     except ExtractError:
@@ -83,7 +82,7 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
 
                     att_id = db.insert_attachment(
                         conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
-                        format=fmt, path=str(dest), size=len(att.payload),
+                        format=fmt, path=key, size=len(att.payload),
                         extracted_text=extracted_text, extract_status=status)
                     if draft and draft.images:
                         images.process_images(conn, att_id, draft, tenant_id=tenant_id)

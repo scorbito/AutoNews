@@ -106,13 +106,15 @@ class AtpajuPublisher(Publisher):
                       timeout=30)
 
     def _upload_image(self, s: requests.Session, idxno: str, path: str) -> None:
-        p = Path(path)
-        if not p.exists():
+        from ..storage import get_storage
+        data = get_storage().get(path)
+        if not data:
             return
-        mime = mimetypes.guess_type(p.name)[0] or "image/jpeg"
+        name = Path(path).name
+        mime = mimetypes.guess_type(name)[0] or "image/jpeg"
         s.post(f"{self.base}/news/quickUpload.ajax.php",
                data={"mode": "input", "article_idxno": idxno, "reverse": "Y", "search": "Y"},
-               files={"uploadFile1[0]": (p.name, p.read_bytes(), mime)},
+               files={"uploadFile1[0]": (name, data, mime)},
                headers={"X-Requested-With": "XMLHttpRequest", "Origin": self.base,
                         "Referer": f"{self.base}/news/userArticleWriteForm.html?mode=modify&idxno={idxno}"},
                timeout=60)

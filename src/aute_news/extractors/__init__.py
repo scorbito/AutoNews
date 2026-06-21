@@ -62,6 +62,23 @@ def extract_file(path: str, filename: str) -> ArticleDraft:
     raise ExtractError(f"아직 지원하지 않는 형식: {filename} (감지: {fmt})")
 
 
+def extract_bytes(data: bytes, filename: str) -> ArticleDraft:
+    """바이트에서 추출(저장소가 디스크가 아닐 때). 임시파일 경유."""
+    import os
+    import tempfile
+    suffix = os.path.splitext(filename)[1] or ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(data)
+        tmp = f.name
+    try:
+        return extract_file(tmp, filename)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 def select_primary(attachments: list[dict]) -> dict | None:
     """같은 보도자료가 여러 포맷일 때 본문 추출용 1건 선택 (이식명세 §3 우선순위).
     이미지/zip 은 본문 후보에서 제외. attachments: [{'filename':..., ...}]"""
@@ -78,4 +95,5 @@ def select_primary(attachments: list[dict]) -> dict | None:
 
 
 __all__ = ["ArticleDraft", "ExtractError", "detect_format", "sniff_format",
-           "extract_file", "select_primary", "extract_url", "find_article_url"]
+           "extract_file", "extract_bytes", "select_primary",
+           "extract_url", "find_article_url"]

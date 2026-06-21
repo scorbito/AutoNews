@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -19,6 +19,7 @@ from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
 from ..publishers import get_publisher
+from ..storage import get_storage, mime_for
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -175,9 +176,14 @@ def article_publish(request: Request, article_id: int):
 def serve_img(request: Request, image_id: int):
     t = _tenant(request)
     conn = db.connect()
-    r = conn.execute("SELECT path FROM images WHERE id=? AND tenant_id=?", (image_id, t)).fetchone()
+    r = conn.execute("SELECT path, ext FROM images WHERE id=? AND tenant_id=?", (image_id, t)).fetchone()
     conn.close()
-    return FileResponse(r["path"]) if r and r["path"] else HTMLResponse("not found", 404)
+    if not r or not r["path"]:
+        return HTMLResponse("not found", 404)
+    data = get_storage().get(r["path"])
+    if data is None:
+        return HTMLResponse("not found", 404)
+    return Response(content=data, media_type=mime_for(r["ext"]))
 
 
 # ── 레거시(첨부 기준 drafts) ──────────────────────────

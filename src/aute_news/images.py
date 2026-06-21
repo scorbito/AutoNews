@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import io
 import re
-from pathlib import Path
 
 from PIL import Image
 
 from . import db
 from .extractors.base import ArticleDraft
-
-IMG_DIR = Path(__file__).resolve().parents[2] / "data" / "images"
+from .storage import get_storage, mime_for
 
 # 한 변이 이 px 미만이면 아이콘/장식으로 보고 제외
 _MIN_SIDE = 150
@@ -64,7 +62,6 @@ def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = Tr
                    tenant_id: int = db.DEFAULT_TENANT) -> dict:
     """draft.images 를 저장·선별해 DB에 기록. 통계 반환."""
     db.clear_images(conn, att_id, tenant_id=tenant_id)
-    dest_dir = IMG_DIR / str(tenant_id) / str(att_id)
     stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
 
     classify = None
@@ -97,11 +94,10 @@ def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = Tr
             selected = bool(w and h and max(w, h) >= _PHOTO_SIDE)
             kind = "photo" if selected else "unknown"
 
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        path = dest_dir / f"{idx}.{img.ext}"
-        path.write_bytes(img.data)
+        key = f"images/{tenant_id}/{att_id}/{idx}.{img.ext}"
+        get_storage().put(key, img.data, mime_for(img.ext))
         db.insert_image(
-            conn, tenant_id=tenant_id, attachment_id=att_id, path=str(path), ext=img.ext,
+            conn, tenant_id=tenant_id, attachment_id=att_id, path=key, ext=img.ext,
             width=w, height=h, bytes=len(img.data), kind=kind,
             selected=1 if selected else 0, caption=caption, ord=idx,
         )

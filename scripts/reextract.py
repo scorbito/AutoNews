@@ -11,8 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from aute_news import db, images                          # noqa: E402
-from aute_news.extractors import ExtractError, extract_file  # noqa: E402
+from aute_news import db, images                           # noqa: E402
+from aute_news.extractors import ExtractError, extract_bytes  # noqa: E402
+from aute_news.storage import get_storage                   # noqa: E402
 
 
 def main() -> None:
@@ -26,7 +27,10 @@ def main() -> None:
     changed = 0
     for r in rows:
         try:
-            draft = extract_file(r["path"], r["filename"])
+            data = get_storage().get(r["path"])
+            if data is None:
+                raise ExtractError("저장소에서 파일을 찾을 수 없음")
+            draft = extract_bytes(data, r["filename"])
             text, status = draft.body_text, "done"
         except ExtractError as e:
             text, status = None, "manual"
