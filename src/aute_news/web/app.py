@@ -154,6 +154,8 @@ async def admin_config(request: Request, tid: int):
         return HTMLResponse("관리자 전용입니다.", 403)
     form = await request.form()
     kw = {k: v for k, v in form.items() if v not in (None, "")}
+    if "collect_enabled" in kw:
+        kw["collect_enabled"] = int(kw["collect_enabled"])  # INTEGER 컬럼
     conn = db.connect()
     db.set_tenant_config(conn, tid, **kw)
     conn.close()

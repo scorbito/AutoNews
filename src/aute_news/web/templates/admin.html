@@ -24,6 +24,8 @@
         메일 {% if t.has_mail %}설정됨{% else %}미설정{% endif %}</span>
       <span class="tag s-draft">발행기 {{ t.publisher or 'html' }}</span>
       <span class="tag s-published">기사 {{ t.articles }}</span>
+      {% if t.collect_enabled %}<span class="tag s-done">예약 {{ t.collect_times }}</span>
+      {% else %}<span class="tag s-pending">예약 꺼짐</span>{% endif %}
     </div>
     <div class="row">
       <form method="post" action="/admin/collect/{{ t.id }}"><button class="gray" type="submit">📥 수집</button></form>
@@ -58,6 +60,18 @@
             <option value="review" {% if t.pipeline_mode=='review' %}selected{% endif %}>review (기자 검토)</option>
             <option value="auto" {% if t.pipeline_mode=='auto' %}selected{% endif %}>auto (자동 발행)</option>
           </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <strong style="font-size:13px;">수집 예약 (KST)</strong>
+        <div class="row">
+          <select name="collect_enabled">
+            <option value="0">예약 끄기</option>
+            <option value="1" {% if t.collect_enabled %}selected{% endif %}>예약 켜기</option>
+          </select>
+          <input type="text" name="collect_times" value="{{ t.collect_times or '' }}"
+                 placeholder="09:00,15:00" style="width:200px;">
+          <span class="muted">시:분, 쉼표 구분</span>
         </div>
       </div>
       <div class="row"><button type="submit">💾 설정 저장</button></div>

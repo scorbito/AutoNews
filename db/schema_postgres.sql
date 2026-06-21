@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS tenant_config (
     cms_user_email     TEXT,
     cms_section        TEXT DEFAULT 'S1N10',
     pipeline_mode      TEXT NOT NULL DEFAULT 'review',
+    collect_enabled    INTEGER NOT NULL DEFAULT 0,
+    collect_times      TEXT,                          -- "09:00,15:00" (KST)
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

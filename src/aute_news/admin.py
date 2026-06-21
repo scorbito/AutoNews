@@ -59,6 +59,8 @@ def list_tenants(conn) -> list[dict]:
             "imap_email": cfg.get("imap_email"), "publisher": cfg.get("publisher"),
             "pipeline_mode": cfg.get("pipeline_mode"), "articles": arts,
             "has_mail": bool(cfg.get("imap_host") and cfg.get("imap_email")),
+            "collect_enabled": cfg.get("collect_enabled"),
+            "collect_times": cfg.get("collect_times"),
         })
     return out
 
