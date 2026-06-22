@@ -107,9 +107,13 @@ class GeminiProvider(LLMProvider):
         return parse_json_loose(resp.text)
 
 
-def get_llm() -> LLMProvider:
-    """활성 LLM. LLM_PROVIDER 로 교체(기본 gemini)."""
+def get_llm(model: str | None = None) -> LLMProvider:
+    """활성 LLM. LLM_PROVIDER 로 교체(기본 gemini).
+
+    model 을 명시하면 그 모델을 쓰고, 없으면 LLM_MODEL env(기본 DEFAULT_MODEL).
+    단계별로 다른 모델을 쓰려면 호출부에서 model 을 넘긴다(예: 기사 생성=flash).
+    """
     provider = os.getenv("LLM_PROVIDER", "gemini").lower()
     if provider == "gemini":
-        return GeminiProvider(os.getenv("LLM_MODEL", DEFAULT_MODEL))
+        return GeminiProvider(model or os.getenv("LLM_MODEL", DEFAULT_MODEL))
     raise RuntimeError(f"미지원 LLM_PROVIDER: {provider}")

@@ -9,11 +9,15 @@ from __future__ import annotations
 import datetime
 import html as _html
 import json
+import os
 import re
 
 from . import db
 from .config import normalize_category
 from .llm import get_llm, load_prompt
+
+# 기사 생성은 품질 우선 — 기본 flash(나머지 단계는 LLM_MODEL=flash-lite).
+GENERATE_MODEL = "gemini-2.5-flash"
 
 _META_HDR = re.compile(r"^[\s]*[■□▶◆▪◇★◎●]\s*\S")
 _META_ITEM = re.compile(r"^[\s]*[-•⦁·∙]\s*[^:：]{1,30}\s*[:：]")
@@ -79,7 +83,8 @@ def generate(body_text: str, *, email_subject: str = "", email_from: str = "",
 - 이미지 개수: {len(images_meta)}
 - 이미지 목록:
 {img_lines}"""
-    return get_llm().complete_json(system, user, temperature=0.3)
+    model = os.getenv("GENERATE_MODEL", GENERATE_MODEL)
+    return get_llm(model).complete_json(system, user, temperature=0.3)
 
 
 def generate_for_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT) -> dict:

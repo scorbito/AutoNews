@@ -93,8 +93,9 @@ class ImageKind(BaseModel):
     caption: str = Field(description="사진이면 한 줄 설명(아니면 빈 문자열)")
 
 
-def classify_image(data: bytes, ext: str, model: str = DEFAULT_MODEL) -> ImageKind:
-    """Gemini 멀티모달로 이미지가 기사용 사진인지/직인·로고인지 분류."""
+def classify_image(data: bytes, ext: str, model: str | None = None) -> ImageKind:
+    """Gemini 멀티모달로 이미지가 기사용 사진인지/직인·로고인지 분류(기본 LLM_MODEL)."""
+    model = model or os.getenv("LLM_MODEL", DEFAULT_MODEL)
     mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
     resp = _client().models.generate_content(
         model=model,
