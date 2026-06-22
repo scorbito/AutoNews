@@ -90,10 +90,18 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                      password: str, folders: list[str], batch_limit: int = 200) -> dict:
     """한 메일함을 UID 추적으로 수집(tenant_id 태깅). 핵심 루프."""
     stats = {"account": account, "new_messages": 0, "attachments": 0,
-             "extracted": 0, "manual": 0}
+             "extracted": 0, "manual": 0, "baselined": 0}
     with MailBox(host).login(email, password) as mb:
         for folder in folders:
             mb.folder.set(folder)
+            # 최초 수집("지금부터"): 기준선이 없으면 현재 최대 UID를 저장하고
+            # 과거 메일은 건너뜀 → 이후 도착하는 새 메일만 수집한다.
+            if not db.folder_initialized(conn, account, folder, tenant_id=tenant_id):
+                baseline = max((int(u) for u in mb.uids()), default=0)
+                db.set_last_uid(conn, account, folder, baseline, tenant_id=tenant_id)
+                conn.commit()
+                stats["baselined"] += 1
+                continue
             last_uid = db.get_last_uid(conn, account, folder, tenant_id=tenant_id)
             max_uid = last_uid
             for msg in mb.fetch(AND(uid=f"{last_uid + 1}:*"),
@@ -172,11 +180,11 @@ def collect_for_tenant(tenant_id: int, only_enabled: bool = False) -> dict:
         if accounts:
             per = []
             agg = {"tenant_id": tenant_id, "accounts": 0, "new_messages": 0,
-                   "attachments": 0, "extracted": 0, "manual": 0}
+                   "attachments": 0, "extracted": 0, "manual": 0, "baselined": 0}
             for m in accounts:
                 s = _collect_one_account(conn, tenant_id, m)
                 agg["accounts"] += 1
-                for k in ("new_messages", "attachments", "extracted", "manual"):
+                for k in ("new_messages", "attachments", "extracted", "manual", "baselined"):
                     agg[k] += s.get(k, 0)
                 per.append(s)
             agg["per_account"] = per

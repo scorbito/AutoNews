@@ -140,6 +140,15 @@ def list_tenant_mail_accounts(conn, tenant_id: int, only_enabled: bool = False) 
     return out
 
 
+def folder_initialized(conn, account: str, folder: str,
+                       tenant_id: int = DEFAULT_TENANT) -> bool:
+    """이 폴더의 수집 기준선(folder_state)이 이미 있는지. 최초 수집 판별용."""
+    row = conn.execute(
+        "SELECT 1 FROM folder_state WHERE tenant_id=? AND account=? AND folder=?",
+        (tenant_id, account, folder)).fetchone()
+    return row is not None
+
+
 def get_last_uid(conn, account: str, folder: str, tenant_id: int = DEFAULT_TENANT) -> int:
     row = conn.execute(
         "SELECT last_uid FROM folder_state WHERE tenant_id=? AND account=? AND folder=?",
