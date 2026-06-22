@@ -125,6 +125,7 @@ CREATE TABLE images (
     tenant_id       BIGINT NOT NULL REFERENCES tenants(id),
     attachment_id   BIGINT NOT NULL REFERENCES attachments(id),
     path            TEXT,
+    orig_name       TEXT,                       -- 원본 파일명(ZIP 등) — LLM 매칭/번호 힌트용
     ext             TEXT,
     width           INTEGER,
     height          INTEGER,

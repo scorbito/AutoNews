@@ -15,6 +15,7 @@ from imap_tools import AND, MailBox
 
 from . import db, images
 from .extractors import ExtractError, detect_format, extract_bytes
+from .extractors.archive import expand_zip, is_zip
 from .storage import get_storage, mime_for
 
 load_dotenv()
@@ -131,6 +132,25 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                     key = f"attachments/{tenant_id}/{account}/{uid}_{_safe_name(att.filename)}"
                     get_storage().put(key, att.payload, mime_for(fmt))
                     stats["attachments"] += 1
+
+                    # ZIP 첨부: '코드가 푼다' — 압축을 풀어 사진을 파일명 보존해 저장.
+                    # (어느 사진이 어느 기사인지 매칭은 이후 LLM 단계의 몫)
+                    if is_zip(att.filename, att.payload):
+                        files = []
+                        try:
+                            files = [f for f in expand_zip(att.payload) if f.is_image]
+                        except Exception:  # noqa: BLE001 (손상 zip 등)
+                            pass
+                        att_id = db.insert_attachment(
+                            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
+                            format="zip", path=key, size=len(att.payload),
+                            extracted_text=None, extract_status="done" if files else "manual")
+                        if files:
+                            images.process_zip_images(conn, att_id, files, tenant_id=tenant_id)
+                            stats["extracted"] += 1
+                        else:
+                            stats["manual"] += 1
+                        continue
 
                     extracted_text, status, draft = None, "pending", None
                     try:

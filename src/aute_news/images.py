@@ -58,52 +58,68 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
-def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = True,
-                   tenant_id: int = db.DEFAULT_TENANT) -> dict:
-    """draft.images 를 저장·선별해 DB에 기록. 통계 반환."""
-    db.clear_images(conn, att_id, tenant_id=tenant_id)
-    stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
+def _load_classifier(use_gemini: bool):
+    if not use_gemini:
+        return None
+    try:
+        from .generator import classify_image  # 지연 임포트(키 없으면 사용 안 함)
+        return classify_image
+    except Exception:  # noqa: BLE001
+        return None
 
-    classify = None
-    if use_gemini:
+
+def _save_one(conn, att_id: int, tenant_id: int, idx: int, data: bytes, ext: str,
+              orig_name: str | None, classify, stats: dict):
+    """이미지 1장: 크기 필터 → (가능하면)Gemini 분류 → 저장. classify를 반환(실패시 None)."""
+    w, h = _measure(data)
+    if w and h and max(w, h) < _MIN_SIDE:
+        stats["skipped_small"] += 1
+        return classify
+    kind, selected, caption = "unknown", False, ""
+    if classify:
         try:
-            from .generator import classify_image  # 지연 임포트(키 없으면 사용 안 함)
-            classify = classify_image
+            res = classify(data, ext)
+            kind, selected, caption = res.kind, res.is_article_photo, res.caption
         except Exception:  # noqa: BLE001
             classify = None
+    if not classify:
+        selected = bool(w and h and max(w, h) >= _PHOTO_SIDE)
+        kind = "photo" if selected else "unknown"
+    key = f"images/{tenant_id}/{att_id}/{idx}.{ext}"
+    get_storage().put(key, data, mime_for(ext))
+    db.insert_image(
+        conn, tenant_id=tenant_id, attachment_id=att_id, path=key, orig_name=orig_name,
+        ext=ext, width=w, height=h, bytes=len(data), kind=kind,
+        selected=1 if selected else 0, caption=caption, ord=idx)
+    stats["saved"] += 1
+    if selected:
+        stats["selected"] += 1
+    return classify
 
+
+def process_zip_images(conn, att_id: int, files, use_gemini: bool = True,
+                       tenant_id: int = db.DEFAULT_TENANT) -> dict:
+    """ZIP에서 푼 이미지(ExpandedFile 목록)를 저장. 원본 파일명(orig_name) 보존."""
+    db.clear_images(conn, att_id, tenant_id=tenant_id)
+    stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
+    classify = _load_classifier(use_gemini)
+    for idx, f in enumerate(files):
+        if not getattr(f, "is_image", False):
+            continue
+        stats["total"] += 1
+        classify = _save_one(conn, att_id, tenant_id, idx, f.data, f.ext, f.name, classify, stats)
+    conn.commit()
+    return stats
+
+
+def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = True,
+                   tenant_id: int = db.DEFAULT_TENANT) -> dict:
+    """draft.images(문서 임베드 이미지)를 저장·선별. 파일명이 없어 orig_name=None."""
+    db.clear_images(conn, att_id, tenant_id=tenant_id)
+    stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
+    classify = _load_classifier(use_gemini)
     for idx, img in enumerate(draft.images):
         stats["total"] += 1
-        w, h = (img.width, img.height) if img.width and img.height else _measure(img.data)
-
-        # 1단계: 크기 필터
-        if w and h and max(w, h) < _MIN_SIDE:
-            stats["skipped_small"] += 1
-            continue
-
-        kind, selected, caption = "unknown", False, ""
-        # 2단계: Gemini 분류(가능하면)
-        if classify:
-            try:
-                res = classify(img.data, img.ext)
-                kind, selected, caption = res.kind, res.is_article_photo, res.caption
-            except Exception:  # noqa: BLE001
-                classify = None  # 실패 시 이후는 크기 기준으로
-        if not classify:
-            # 크기 휴리스틱: 충분히 크면 사진으로 자동 채택
-            selected = bool(w and h and max(w, h) >= _PHOTO_SIDE)
-            kind = "photo" if selected else "unknown"
-
-        key = f"images/{tenant_id}/{att_id}/{idx}.{img.ext}"
-        get_storage().put(key, img.data, mime_for(img.ext))
-        db.insert_image(
-            conn, tenant_id=tenant_id, attachment_id=att_id, path=key, ext=img.ext,
-            width=w, height=h, bytes=len(img.data), kind=kind,
-            selected=1 if selected else 0, caption=caption, ord=idx,
-        )
-        stats["saved"] += 1
-        if selected:
-            stats["selected"] += 1
-
+        classify = _save_one(conn, att_id, tenant_id, idx, img.data, img.ext, None, classify, stats)
     conn.commit()
     return stats
