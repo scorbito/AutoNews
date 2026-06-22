@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ a.headline or a.title }} — {{ paper }}</title>
+  <style>
+    body { font-family:'Malgun Gothic',sans-serif; max-width:760px; margin:0 auto;
+           line-height:1.85; color:#1a1a1a; padding:0 18px; }
+    .masthead { border-bottom:2px solid #111; padding:14px 0; margin-bottom:22px;
+                display:flex; justify-content:space-between; align-items:baseline; }
+    .masthead .name { font-size:22px; font-weight:800; letter-spacing:-0.5px; }
+    .masthead a { color:#888; text-decoration:none; font-size:13px; }
+    .cat { color:#c0392b; font-weight:700; font-size:13px; }
+    h1 { font-size:30px; line-height:1.3; margin:8px 0 6px; }
+    .sub { color:#555; font-weight:500; font-size:18px; margin:0 0 10px; }
+    .meta { color:#999; font-size:13px; border-bottom:1px solid #eee; padding-bottom:14px; margin-bottom:20px; }
+    .body p { margin:0 0 16px; font-size:17px; }
+    .body h2 { font-size:20px; color:#333; }
+    .body .block { background:#f5f6f8; padding:10px 14px; border-radius:6px; color:#444; }
+    figure { margin:22px 0; }
+    figure img { max-width:100%; border-radius:4px; }
+    figcaption { color:#888; font-size:13px; text-align:center; margin-top:6px; }
+    .foot { border-top:1px solid #eee; margin-top:30px; padding:16px 0 40px; }
+    .foot a { color:#666; text-decoration:none; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="masthead">
+    <span class="name">🗞 {{ paper }}</span>
+    <a href="/board">← 게시판</a>
+  </div>
+
+  {% if a.category_code %}<div class="cat">{{ cats.get(a.category_code, a.category_code) }}</div>{% endif %}
+  <h1>{{ a.headline or a.title }}</h1>
+  {% if a.subtitle %}<div class="sub">{{ a.subtitle }}</div>{% endif %}
+  <div class="meta">{{ paper }}{% if a.published_at %} · {{ a.published_at }}{% endif %}</div>
+
+  <div class="body">
+    {{ a.content_html | safe }}
+  </div>
+
+  {% for im in images %}
+  <figure>
+    <img src="/img/{{ im.id }}" alt="">
+    {% if im.caption %}<figcaption>{{ im.caption }}</figcaption>{% endif %}
+  </figure>
+  {% endfor %}
+
+  <div class="foot"><a href="/board">← {{ paper }} 게시판으로</a></div>
+</body>
+</html>

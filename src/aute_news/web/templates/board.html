@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ paper }} — 발행 게시판{% endblock %}
+{% block body %}
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <h2 style="margin:0;">🗞 {{ paper }} <span class="muted">발행 미리보기</span></h2>
+  <a href="/" style="font-size:13px;">← 기사 목록</a>
+</div>
+<p class="muted" style="margin-top:4px;">실제 게시된 모습 미리보기입니다. (테스트/데모용)</p>
+
+{% if not arts %}
+  <p class="muted" style="margin-top:24px;">아직 발행된 기사가 없습니다. 기사 상세에서 <strong>발행</strong>하면 여기에 나타납니다.</p>
+{% endif %}
+
+<div style="margin-top:18px;">
+  {% for a in arts %}
+  <article class="card" style="margin-bottom:14px;">
+    <div class="muted" style="font-size:12px;">
+      {{ cats.get(a.category_code, a.category_code or '') }}
+      {% if a.published_at %} · {{ a.published_at }}{% endif %}
+    </div>
+    <h3 style="margin:6px 0 4px;">
+      <a href="/board/{{ a.id }}" style="text-decoration:none; color:#111;">{{ a.headline or a.title or '(제목 없음)' }}</a>
+    </h3>
+    {% if a.subtitle %}<div class="muted">{{ a.subtitle }}</div>{% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -15,13 +15,13 @@
 </div>
 
 {% for t in tenants %}
+{% set mail_n = t.users | selectattr('has_mail') | list | length %}
 <div class="card" style="margin-bottom:14px;">
   <div class="row" style="justify-content:space-between;">
     <div>
       <strong>#{{ t.id }} {{ t.name }}</strong>
-      <span class="muted"> · {{ t.emails|join(', ') }}</span>
-      <span class="tag {% if t.has_mail %}s-done{% else %}s-pending{% endif %}">
-        메일 {% if t.has_mail %}설정됨{% else %}미설정{% endif %}</span>
+      <span class="muted"> · 기자 {{ t.users|length }}명</span>
+      <span class="tag {% if mail_n %}s-done{% else %}s-pending{% endif %}">메일연결 {{ mail_n }}/{{ t.users|length }}</span>
       <span class="tag s-draft">발행기 {{ t.publisher or 'html' }}</span>
       <span class="tag s-published">기사 {{ t.articles }}</span>
       {% if t.collect_enabled %}<span class="tag s-done">예약 {{ t.collect_times }}</span>
@@ -33,6 +33,37 @@
     </div>
   </div>
 
+  <!-- 기자별 메일 계정 (개인) -->
+  <div style="margin-top:10px;">
+    <strong style="font-size:13px;">기자 메일 계정 (개인)</strong>
+    {% for u in t.users %}
+    <details style="margin-top:6px;">
+      <summary class="muted" style="cursor:pointer;">
+        {{ u.email }}
+        <span class="tag {% if u.has_mail %}s-done{% else %}s-pending{% endif %}">
+          {% if u.has_mail %}{{ u.imap_email }}{% else %}메일 미설정{% endif %}</span>
+        {% if u.collect_enabled %}<span class="tag s-done">예약참여</span>{% endif %}
+      </summary>
+      <form method="post" action="/admin/user/{{ u.user_id }}/mail" class="grid" style="margin-top:8px;">
+        <div>
+          <label>IMAP 이메일</label><input type="text" name="imap_email" value="{{ u.imap_email or '' }}" placeholder="id@naver.com">
+          <label>비밀번호(앱비번)</label><input type="password" name="imap_password" placeholder="변경 시에만 입력">
+        </div>
+        <div>
+          <label>IMAP 호스트 <span class="muted">(자동/모르면 비움)</span></label><input type="text" name="imap_host" placeholder="imap.naver.com">
+          <label>폴더(쉼표)</label><input type="text" name="imap_folders" value="{{ u.imap_folders }}" placeholder="내게쓴메일함,받은메일함">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-weight:normal;">
+            <input type="checkbox" name="collect_enabled" value="1" {% if u.collect_enabled %}checked{% endif %}> 예약 수집 포함</label>
+          <div class="row"><button type="submit" class="gray">💾 메일 저장</button></div>
+        </div>
+      </form>
+    </details>
+    {% endfor %}
+    {% if not t.users %}<p class="muted">기자가 없습니다.</p>{% endif %}
+  </div>
+
   <form method="post" action="/admin/tenant/{{ t.id }}/user" class="row" style="margin-top:8px;">
     <span class="muted" style="font-size:12px;">기자 추가:</span>
     <input type="email" name="email" placeholder="기자 이메일" required style="width:180px;">
@@ -41,33 +72,24 @@
   </form>
 
   <details style="margin-top:10px;">
-    <summary class="muted" style="cursor:pointer;">설정 (메일 · CMS)</summary>
+    <summary class="muted" style="cursor:pointer;">발행(CMS) · 예약 설정</summary>
     <form method="post" action="/admin/config/{{ t.id }}" style="margin-top:10px;">
-      <div class="grid">
-        <div>
-          <strong style="font-size:13px;">메일(IMAP)</strong>
-          <label>IMAP 호스트</label><input type="text" name="imap_host" value="{{ t.imap_email and '' }}" placeholder="imap.naver.com">
-          <label>이메일</label><input type="text" name="imap_email" placeholder="{{ t.imap_email or 'id@naver.com' }}">
-          <label>비밀번호(앱비번)</label><input type="password" name="imap_password" placeholder="변경 시에만 입력">
-          <label>폴더(쉼표)</label><input type="text" name="imap_folders" placeholder="내게쓴메일함">
-        </div>
-        <div>
-          <strong style="font-size:13px;">발행(CMS)</strong>
-          <label>발행기</label>
-          <select name="publisher">
-            <option value="html">html (내보내기)</option>
-            <option value="atpaju" {% if t.publisher=='atpaju' %}selected{% endif %}>atpaju (ND소프트)</option>
-          </select>
-          <label>사이트 주소</label><input type="text" name="ndsoft_base_url" placeholder="https://www.atpaju.com">
-          <label>CMS 아이디</label><input type="text" name="cms_user" placeholder="evahoba">
-          <label>CMS 비밀번호</label><input type="password" name="cms_password" placeholder="변경 시에만 입력">
-          <label>기본 섹션코드</label><input type="text" name="cms_section" placeholder="S1N10">
-          <label>발행 모드</label>
-          <select name="pipeline_mode">
-            <option value="review" {% if t.pipeline_mode=='review' %}selected{% endif %}>review (기자 검토)</option>
-            <option value="auto" {% if t.pipeline_mode=='auto' %}selected{% endif %}>auto (자동 발행)</option>
-          </select>
-        </div>
+      <div>
+        <strong style="font-size:13px;">발행(CMS)</strong>
+        <label>발행기</label>
+        <select name="publisher">
+          <option value="html">html (내보내기)</option>
+          <option value="atpaju" {% if t.publisher=='atpaju' %}selected{% endif %}>atpaju (ND소프트)</option>
+        </select>
+        <label>사이트 주소</label><input type="text" name="ndsoft_base_url" placeholder="https://www.atpaju.com">
+        <label>CMS 아이디</label><input type="text" name="cms_user" placeholder="evahoba">
+        <label>CMS 비밀번호</label><input type="password" name="cms_password" placeholder="변경 시에만 입력">
+        <label>기본 섹션코드</label><input type="text" name="cms_section" placeholder="S1N10">
+        <label>발행 모드</label>
+        <select name="pipeline_mode">
+          <option value="review" {% if t.pipeline_mode=='review' %}selected{% endif %}>review (기자 검토)</option>
+          <option value="auto" {% if t.pipeline_mode=='auto' %}selected{% endif %}>auto (자동 발행)</option>
+        </select>
       </div>
       <div style="margin-top:10px;">
         <strong style="font-size:13px;">수집 예약 (KST)</strong>

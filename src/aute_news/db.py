@@ -95,6 +95,51 @@ def set_tenant_config(conn, tenant_id: int, *, imap_password: str | None = None,
         (tenant_id, *cols.values()))
 
 
+# --- 기자(사용자)별 메일 설정 ---
+
+_USER_MAIL_COLS = ("imap_host", "imap_email", "imap_folders", "collect_enabled")
+
+
+def get_user_mail(conn, user_id: str) -> dict | None:
+    """기자 메일 설정(비번 복호화 포함). 없으면 None."""
+    row = conn.execute("SELECT * FROM user_mail_config WHERE user_id=?", (user_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["imap_password"] = crypto.decrypt(d.pop("imap_password_enc", None))
+    return d
+
+
+def set_user_mail(conn, user_id: str, tenant_id: int, *, imap_password: str | None = None,
+                  **fields) -> None:
+    """기자 메일 설정 upsert. 제공된 필드만 갱신(None은 기존값 유지). 비번은 암호화."""
+    cols = {k: v for k, v in fields.items() if k in _USER_MAIL_COLS}
+    if imap_password is not None:
+        cols["imap_password_enc"] = crypto.encrypt(imap_password)
+    names = ["user_id", "tenant_id", *cols.keys()]
+    placeholders = ",".join(["?"] * len(names))
+    updates = ", ".join(f"{c}=COALESCE(excluded.{c}, user_mail_config.{c})" for c in cols)
+    updates = (updates + ", " if updates else "") + "updated_at=now()"
+    conn.execute(
+        f"INSERT INTO user_mail_config ({','.join(names)}) VALUES ({placeholders}) "
+        f"ON CONFLICT (user_id) DO UPDATE SET {updates}",
+        (user_id, tenant_id, *cols.values()))
+
+
+def list_tenant_mail_accounts(conn, tenant_id: int, only_enabled: bool = False) -> list[dict]:
+    """신문사 소속 기자들의 메일 설정 목록(비번 복호화 포함)."""
+    q = "SELECT * FROM user_mail_config WHERE tenant_id=?"
+    if only_enabled:
+        q += " AND collect_enabled=1"
+    rows = conn.execute(q, (tenant_id,)).fetchall()
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["imap_password"] = crypto.decrypt(d.pop("imap_password_enc", None))
+        out.append(d)
+    return out
+
+
 def get_last_uid(conn, account: str, folder: str, tenant_id: int = DEFAULT_TENANT) -> int:
     row = conn.execute(
         "SELECT last_uid FROM folder_state WHERE tenant_id=? AND account=? AND folder=?",

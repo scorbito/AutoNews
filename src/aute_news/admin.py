@@ -62,10 +62,23 @@ def list_tenants(conn) -> list[dict]:
     for t in rows:
         cfg = db.get_tenant_config(conn, t["id"]) or {}
         arts = conn.execute("SELECT COUNT(*) c FROM articles WHERE tenant_id=?", (t["id"],)).fetchone()["c"]
-        users = conn.execute("SELECT email FROM tenant_users WHERE tenant_id=?", (t["id"],)).fetchall()
+        urows = conn.execute(
+            "SELECT user_id, email, role FROM tenant_users WHERE tenant_id=? ORDER BY created_at",
+            (t["id"],)).fetchall()
+        users = []
+        for u in urows:
+            m = db.get_user_mail(conn, u["user_id"]) or {}
+            users.append({
+                "user_id": u["user_id"], "email": u["email"], "role": u["role"],
+                "imap_email": m.get("imap_email"),
+                "imap_folders": m.get("imap_folders") or "",
+                "has_mail": bool(m.get("imap_host") and m.get("imap_email")),
+                "collect_enabled": bool(m.get("collect_enabled")),
+            })
         out.append({
             "id": t["id"], "name": t["name"], "status": t["status"],
             "emails": [u["email"] for u in users],
+            "users": users,
             "imap_email": cfg.get("imap_email"), "publisher": cfg.get("publisher"),
             "pipeline_mode": cfg.get("pipeline_mode"), "articles": arts,
             "has_mail": bool(cfg.get("imap_host") and cfg.get("imap_email")),

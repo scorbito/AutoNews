@@ -49,7 +49,7 @@ def run_due(window_min: int = 5) -> list[dict]:
     conn.close()
     results = []
     for tid in ids:
-        collect = collect_for_tenant(tid)
+        collect = collect_for_tenant(tid, only_enabled=True)
         conn = db.connect()
         made = admin.process_tenant(conn, tid)
         conn.close()

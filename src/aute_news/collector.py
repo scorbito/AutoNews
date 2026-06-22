@@ -40,6 +40,30 @@ def _safe_name(s: str) -> str:
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in s)
 
 
+# 도메인 → IMAP 호스트 추정 (UI 자동완성용)
+_IMAP_HOSTS = {
+    "naver.com": "imap.naver.com",
+    "daum.net": "imap.daum.net",
+    "hanmail.net": "imap.daum.net",
+    "gmail.com": "imap.gmail.com",
+    "nate.com": "imap.mail.nate.com",
+    "outlook.com": "outlook.office365.com",
+    "hotmail.com": "outlook.office365.com",
+}
+
+
+def host_for_email(email: str) -> str:
+    """이메일 도메인으로 IMAP 호스트 추정(모르면 빈 문자열)."""
+    domain = (email or "").split("@")[-1].strip().lower()
+    return _IMAP_HOSTS.get(domain, "")
+
+
+def list_imap_folders(host: str, email: str, password: str) -> list[str]:
+    """계정에 로그인해 메일함(폴더) 이름 목록을 반환."""
+    with MailBox(host).login(email, password) as mb:
+        return [f.name for f in mb.folder.list()]
+
+
 def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                      password: str, folders: list[str], batch_limit: int = 200) -> dict:
     """한 메일함을 UID 추적으로 수집(tenant_id 태깅). 핵심 루프."""
@@ -92,21 +116,60 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
     return stats
 
 
-def collect_for_tenant(tenant_id: int) -> dict:
-    """테넌트 설정(tenant_config)의 메일함에서 수집."""
+def _collect_one_account(conn, tenant_id: int, mail: dict) -> dict:
+    """기자 메일 설정(dict) 1건 수집. account 키는 이메일(기자별 격리)."""
+    folders = [f.strip() for f in (mail.get("imap_folders") or "INBOX").split(",") if f.strip()]
+    return _collect_mailbox(conn, tenant_id, mail["imap_email"], mail["imap_host"],
+                            mail["imap_email"], mail["imap_password"], folders)
+
+
+def collect_for_user(user_id: str) -> dict:
+    """기자 본인 메일함에서 수집(user_mail_config)."""
     conn = db.connect()
-    cfg = db.get_tenant_config(conn, tenant_id)
-    if not cfg or not (cfg.get("imap_host") and cfg.get("imap_email") and cfg.get("imap_password")):
+    mail = db.get_user_mail(conn, user_id)
+    if not mail or not (mail.get("imap_host") and mail.get("imap_email") and mail.get("imap_password")):
         conn.close()
-        return {"tenant_id": tenant_id, "skipped": "메일 설정 없음"}
-    folders = [f.strip() for f in (cfg.get("imap_folders") or "INBOX").split(",") if f.strip()]
+        return {"user_id": user_id, "skipped": "메일 설정 없음"}
     try:
-        stats = _collect_mailbox(conn, tenant_id, cfg["imap_email"], cfg["imap_host"],
-                                 cfg["imap_email"], cfg["imap_password"], folders)
+        stats = _collect_one_account(conn, mail["tenant_id"], mail)
     finally:
         conn.close()
-    stats["tenant_id"] = tenant_id
+    stats["user_id"] = user_id
     return stats
+
+
+def collect_for_tenant(tenant_id: int, only_enabled: bool = False) -> dict:
+    """신문사 소속 기자들의 메일함에서 수집(기자별 개인 계정).
+
+    user_mail_config 가 있으면 그것을 쓰고, 하나도 없으면 레거시 tenant_config 로 폴백.
+    """
+    conn = db.connect()
+    accounts = [m for m in db.list_tenant_mail_accounts(conn, tenant_id, only_enabled)
+                if m.get("imap_host") and m.get("imap_email") and m.get("imap_password")]
+    try:
+        if accounts:
+            per = []
+            agg = {"tenant_id": tenant_id, "accounts": 0, "new_messages": 0,
+                   "attachments": 0, "extracted": 0, "manual": 0}
+            for m in accounts:
+                s = _collect_one_account(conn, tenant_id, m)
+                agg["accounts"] += 1
+                for k in ("new_messages", "attachments", "extracted", "manual"):
+                    agg[k] += s.get(k, 0)
+                per.append(s)
+            agg["per_account"] = per
+            return agg
+        # 폴백: 레거시 테넌트 단위 메일 설정
+        cfg = db.get_tenant_config(conn, tenant_id)
+        if not cfg or not (cfg.get("imap_host") and cfg.get("imap_email") and cfg.get("imap_password")):
+            return {"tenant_id": tenant_id, "skipped": "메일 설정 없음"}
+        folders = [f.strip() for f in (cfg.get("imap_folders") or "INBOX").split(",") if f.strip()]
+        stats = _collect_mailbox(conn, tenant_id, cfg["imap_email"], cfg["imap_host"],
+                                 cfg["imap_email"], cfg["imap_password"], folders)
+        stats["tenant_id"] = tenant_id
+        return stats
+    finally:
+        conn.close()
 
 
 # --- 레거시(.env 단일 계정, CLI/개발용) ---

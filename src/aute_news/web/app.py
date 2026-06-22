@@ -162,6 +162,30 @@ def admin_add_user(request: Request, tid: int, email: str = Form(...), password:
     return RedirectResponse(f"/admin?msg={msg}", status_code=303)
 
 
+@app.post("/admin/user/{user_id}/mail")
+async def admin_user_mail(request: Request, user_id: str):
+    """관리자가 기자 메일 계정을 대신 설정."""
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    from ..collector import host_for_email
+    form = await request.form()
+    conn = db.connect()
+    row = conn.execute("SELECT tenant_id FROM tenant_users WHERE user_id=?", (user_id,)).fetchone()
+    if not row:
+        conn.close()
+        return RedirectResponse("/admin?msg=사용자 없음", status_code=303)
+    email = (form.get("imap_email") or "").strip()
+    host = (form.get("imap_host") or "").strip() or host_for_email(email)
+    db.set_user_mail(
+        conn, user_id, row["tenant_id"],
+        imap_email=email, imap_host=host,
+        imap_folders=(form.get("imap_folders") or "").strip(),
+        collect_enabled=1 if form.get("collect_enabled") == "1" else 0,
+        imap_password=(form.get("imap_password") or None))
+    conn.close()
+    return RedirectResponse(f"/admin?msg={email} 메일 설정 저장", status_code=303)
+
+
 @app.post("/admin/config/{tid}")
 async def admin_config(request: Request, tid: int):
     if not _require_admin(request):
@@ -210,14 +234,14 @@ def index(request: Request, status: str = "all"):
 
 @app.post("/collect")
 def collect_now(request: Request):
-    """기자가 본인 신문사 메일을 지금 수집."""
-    from ..collector import collect_for_tenant
+    """기자가 본인 메일함(개인 계정)을 지금 수집."""
+    from ..collector import collect_for_user
     try:
-        stats = collect_for_tenant(_tenant(request))
+        stats = collect_for_user(request.session["user_id"])
     except Exception as e:  # noqa: BLE001 (메일 로그인 실패 등)
         return RedirectResponse(f"/legacy?msg=수집 실패: {type(e).__name__}", status_code=303)
     if stats.get("skipped"):
-        msg = f"수집 불가: {stats['skipped']} (관리자에게 메일 설정 요청)"
+        msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
     else:
         msg = (f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, "
                f"첨부 {stats.get('attachments', 0)}개")
@@ -225,15 +249,56 @@ def collect_now(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_form(request: Request):
+def settings_form(request: Request, mailerr: str = ""):
+    from ..collector import list_imap_folders
+    uid = request.session["user_id"]
     conn = db.connect()
     cfg = db.get_tenant_config(conn, _tenant(request)) or {}
+    mail = db.get_user_mail(conn, uid) or {}
     conn.close()
+    # 메일 계정이 등록돼 있으면 라이브로 폴더 목록을 받아 체크박스로 보여줌
+    folders, folder_err = [], ""
+    if mail.get("imap_host") and mail.get("imap_email") and mail.get("imap_password"):
+        try:
+            folders = list_imap_folders(mail["imap_host"], mail["imap_email"], mail["imap_password"])
+        except Exception as e:  # noqa: BLE001
+            folder_err = f"폴더 목록을 못 받았습니다: {type(e).__name__} (계정/비번 확인)"
+    selected = {f.strip() for f in (mail.get("imap_folders") or "").split(",") if f.strip()}
     auto_on = bool(cfg.get("collect_enabled")) and (cfg.get("pipeline_mode") == "auto")
     return templates.TemplateResponse(
         request, "settings.html",
         {"auto_on": auto_on, "collect_times": cfg.get("collect_times") or "",
-         "has_mail": bool(cfg.get("imap_host"))})
+         "mail": mail, "folders": folders, "selected": selected,
+         "folder_err": folder_err, "mailerr": mailerr,
+         "mail_enabled": bool(mail.get("collect_enabled"))})
+
+
+@app.post("/settings/mail")
+def settings_mail(request: Request, imap_email: str = Form(...),
+                  imap_password: str = Form(""), imap_host: str = Form("")):
+    """기자 본인 메일 계정 저장(비번은 입력했을 때만 갱신)."""
+    from ..collector import host_for_email
+    host = imap_host.strip() or host_for_email(imap_email)
+    conn = db.connect()
+    db.set_user_mail(conn, request.session["user_id"], _tenant(request),
+                     imap_email=imap_email.strip(), imap_host=host,
+                     imap_password=imap_password or None)
+    conn.close()
+    err = "" if host else "도메인을 알 수 없어 IMAP 호스트를 입력해야 합니다."
+    return RedirectResponse(f"/settings?mailerr={err}", status_code=303)
+
+
+@app.post("/settings/folders")
+async def settings_folders(request: Request):
+    """선택한 수집 폴더 + 이 계정의 예약 수집 참여 여부 저장."""
+    form = await request.form()
+    folders = ",".join(form.getlist("folders"))
+    enabled = 1 if form.get("collect_enabled") == "1" else 0
+    conn = db.connect()
+    db.set_user_mail(conn, request.session["user_id"], _tenant(request),
+                     imap_folders=folders, collect_enabled=enabled)
+    conn.close()
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/settings")
@@ -288,6 +353,38 @@ def article_publish(request: Request, article_id: int):
     publish_article(conn, article_id, tenant_id=_tenant(request))
     conn.close()
     return RedirectResponse(f"/a/{article_id}", status_code=303)
+
+
+# ── 발행 미리보기 게시판 (테스트/데모용 신문 페이지) ──
+@app.get("/board", response_class=HTMLResponse)
+def board(request: Request):
+    """발행된 기사를 신문 사이트처럼 보여주는 미리보기 게시판."""
+    t = _tenant(request)
+    conn = db.connect()
+    arts = db.list_all_articles(conn, "published", tenant_id=t)
+    tname = conn.execute("SELECT name FROM tenants WHERE id=?", (t,)).fetchone()
+    conn.close()
+    return templates.TemplateResponse(
+        request, "board.html",
+        {"arts": arts, "cats": CATEGORY_CODES,
+         "paper": tname["name"] if tname else "신문"})
+
+
+@app.get("/board/{article_id}", response_class=HTMLResponse)
+def board_article(request: Request, article_id: int):
+    """발행된 기사 1건을 기사 페이지처럼 렌더."""
+    t = _tenant(request)
+    conn = db.connect()
+    art = db.get_article(conn, article_id, tenant_id=t)
+    imgs = db.list_article_images(conn, article_id, tenant_id=t) if art else []
+    tname = conn.execute("SELECT name FROM tenants WHERE id=?", (t,)).fetchone()
+    conn.close()
+    if not art or art["status"] != "published":
+        return HTMLResponse("발행된 기사가 아닙니다.", 404)
+    return templates.TemplateResponse(
+        request, "board_article.html",
+        {"a": art, "images": imgs, "cats": CATEGORY_CODES,
+         "paper": tname["name"] if tname else "신문"})
 
 
 @app.get("/img/{image_id}")

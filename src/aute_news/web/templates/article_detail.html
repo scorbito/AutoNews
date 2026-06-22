@@ -3,7 +3,8 @@
 {% block body %}
 <p><a href="/">← 기사 목록</a>
    · 상태 <span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span>
-   {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}</p>
+   {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}
+   {% if a.status == 'published' %}· <a href="/board/{{ a.id }}" target="_blank">🗞 게시판에서 보기</a>{% endif %}</p>
 
 <div class="grid">
   <!-- 좌: 편집 -->

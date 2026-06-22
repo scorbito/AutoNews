@@ -43,6 +43,19 @@ CREATE TABLE IF NOT EXISTS tenant_config (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 기자(사용자)별 메일 설정 (메일은 신문사 공용이 아니라 기자 개인 계정)
+CREATE TABLE IF NOT EXISTS user_mail_config (
+    user_id           UUID PRIMARY KEY REFERENCES tenant_users(user_id),
+    tenant_id         BIGINT NOT NULL REFERENCES tenants(id),
+    imap_host         TEXT,
+    imap_email        TEXT,
+    imap_password_enc TEXT,
+    imap_folders      TEXT,
+    collect_enabled   INTEGER NOT NULL DEFAULT 0,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_user_mail_tenant ON user_mail_config(tenant_id);
+
 -- 기존 데이터 테이블 재생성(멀티테넌트). 빈 상태에서만 안전.
 DROP TABLE IF EXISTS drafts, images, articles, attachments, messages, folder_state CASCADE;
 

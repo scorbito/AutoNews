@@ -2,13 +2,54 @@
 {% block title %}내 설정{% endblock %}
 {% block body %}
 <p><a href="/">← 기사 목록</a></p>
-<h2>내 설정 — 자동 수집·발행</h2>
+<h2>내 설정 — 메일 · 자동 수집</h2>
 
-<div class="card" style="max-width:560px;">
-  {% if not has_mail %}
-  <p class="block">⚠️ 아직 메일 연결이 안 돼 있습니다. 관리자에게 메일 설정을 요청하세요.
-     (메일이 설정돼야 수집·자동모드가 동작합니다.)</p>
+<!-- 1) 내 메일 계정 (기자 개인) -->
+<div class="card" style="max-width:560px; margin-bottom:16px;">
+  <h3>① 내 메일 계정</h3>
+  {% if mailerr %}<p class="block">⚠️ {{ mailerr }}</p>{% endif %}
+  <form method="post" action="/settings/mail">
+    <label>이메일</label>
+    <input type="text" name="imap_email" value="{{ mail.imap_email or '' }}" placeholder="id@naver.com" required>
+    <label>비밀번호 (앱 비밀번호 / IMAP 비번)</label>
+    <input type="password" name="imap_password" placeholder="{% if mail.imap_email %}변경 시에만 입력{% else %}앱 비밀번호{% endif %}">
+    <label>IMAP 호스트 <span class="muted">(naver·daum·gmail 등은 자동, 모르면 비워두기)</span></label>
+    <input type="text" name="imap_host" value="{{ mail.imap_host or '' }}" placeholder="imap.naver.com">
+    <div class="row"><button type="submit">💾 계정 저장 · 폴더 불러오기</button></div>
+  </form>
+  <p class="muted" style="margin-top:8px;">저장하면 아래 ②에 그 계정의 메일함 목록이 나타납니다.</p>
+</div>
+
+<!-- 2) 수집 폴더 선택 -->
+<div class="card" style="max-width:560px; margin-bottom:16px;">
+  <h3>② 수집할 메일함 선택</h3>
+  {% if folder_err %}
+    <p class="block">⚠️ {{ folder_err }}</p>
+  {% elif not mail.imap_email %}
+    <p class="muted">먼저 ①에서 메일 계정을 저장하세요.</p>
+  {% elif not folders %}
+    <p class="muted">메일함을 찾지 못했습니다.</p>
+  {% else %}
+  <form method="post" action="/settings/folders">
+    <div style="display:flex; flex-direction:column; gap:6px; margin:8px 0;">
+      {% for f in folders %}
+      <label style="font-weight:normal;">
+        <input type="checkbox" name="folders" value="{{ f }}" {% if f in selected %}checked{% endif %}> {{ f }}
+      </label>
+      {% endfor %}
+    </div>
+    <label style="margin-top:10px;">
+      <input type="checkbox" name="collect_enabled" value="1" {% if mail_enabled %}checked{% endif %}>
+      예약 수집에 이 계정 포함 (자동 모드 시간에 함께 수집)
+    </label>
+    <div class="row"><button type="submit">💾 폴더 저장</button></div>
+  </form>
   {% endif %}
+</div>
+
+<!-- 3) 자동 모드 (신문사 단위) -->
+<div class="card" style="max-width:560px;">
+  <h3>③ 자동 모드 · 수집 시간</h3>
   <form method="post" action="/settings">
     <label>자동 모드</label>
     <select name="auto_mode">
@@ -21,7 +62,7 @@
   </form>
   <p class="muted" style="margin-top:12px;">
     · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
-    · <b>자동(켜기)</b>: 설정한 시간에 메일의 모든 자료가 자동으로 기사화·발행됩니다.
+    · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화·발행됩니다.
   </p>
 </div>
 {% endblock %}
