@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ from .storage import get_storage, mime_for
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[2]
+KST = timezone(timedelta(hours=9))
 
 
 def _folders(env_key: str, default: str) -> list[str]:
@@ -94,14 +96,19 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
     with MailBox(host).login(email, password) as mb:
         for folder in folders:
             mb.folder.set(folder)
-            # 최초 수집("지금부터"): 기준선이 없으면 현재 최대 UID를 저장하고
-            # 과거 메일은 건너뜀 → 이후 도착하는 새 메일만 수집한다.
+            # 최초 수집: 기준선이 없으면 '오늘 00시(KST)'를 경계로 잡아
+            # 그 이전 과거 메일은 건너뛰고, 오늘 0시 이후 메일부터 수집한다.
             if not db.folder_initialized(conn, account, folder, tenant_id=tenant_id):
-                baseline = max((int(u) for u in mb.uids()), default=0)
+                today = datetime.now(KST).date()
+                today_uids = [int(u) for u in mb.uids(AND(date_gte=today))]
+                if today_uids:
+                    baseline = min(today_uids) - 1   # 오늘분부터 일반 루프가 수집
+                else:
+                    baseline = max((int(u) for u in mb.uids()), default=0)
                 db.set_last_uid(conn, account, folder, baseline, tenant_id=tenant_id)
                 conn.commit()
                 stats["baselined"] += 1
-                continue
+                # continue 하지 않고 아래 일반 수집으로 진행(오늘분 수집)
             last_uid = db.get_last_uid(conn, account, folder, tenant_id=tenant_id)
             max_uid = last_uid
             for msg in mb.fetch(AND(uid=f"{last_uid + 1}:*"),

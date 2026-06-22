@@ -243,8 +243,8 @@ def collect_now(request: Request):
     if stats.get("skipped"):
         msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
     elif stats.get("baselined") and not stats.get("new_messages"):
-        msg = ("새로 지정한 메일함은 '지금부터' 기준으로 설정됐습니다 — "
-               "이후 도착하는 새 메일부터 수집됩니다.")
+        msg = ("새로 지정한 메일함은 '오늘 0시' 기준으로 설정됐습니다 — "
+               "오늘 0시 이후 도착한 메일부터 수집됩니다. (오늘 새 메일 없음)")
     else:
         msg = (f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, "
                f"첨부 {stats.get('attachments', 0)}개")
