@@ -58,10 +58,32 @@ def host_for_email(email: str) -> str:
     return _IMAP_HOSTS.get(domain, "")
 
 
-def list_imap_folders(host: str, email: str, password: str) -> list[str]:
-    """계정에 로그인해 메일함(폴더) 이름 목록을 반환."""
+# IMAP 시스템 메일함 → 네이버·다음식 한글 표시명.
+# (수집엔 IMAP 진짜 이름을 쓰고, 화면 라벨만 한글로 맞춘다)
+_SPECIAL_LABELS = {  # SPECIAL-USE 플래그 우선(메일사 공통)
+    "\\Sent": "보낸메일함", "\\Drafts": "임시보관함", "\\Trash": "휴지통",
+    "\\Junk": "스팸메일함", "\\Archive": "보관함", "\\All": "전체메일",
+    "\\Flagged": "중요메일함",
+}
+_NAME_LABELS = {  # 플래그가 없을 때 표준 영문 이름으로 폴백
+    "INBOX": "받은메일함", "Sent Messages": "보낸메일함", "Sent": "보낸메일함",
+    "Drafts": "임시보관함", "Deleted Messages": "휴지통", "Trash": "휴지통",
+    "Junk": "스팸메일함", "Spam": "스팸메일함", "Bulk Mail": "스팸메일함",
+}
+
+
+def _folder_label(name: str, flags) -> str:
+    for fl in flags or ():
+        if fl in _SPECIAL_LABELS:
+            return _SPECIAL_LABELS[fl]
+    return _NAME_LABELS.get(name, name)
+
+
+def list_imap_folders(host: str, email: str, password: str) -> list[dict]:
+    """계정 로그인 → 메일함 목록. [{name(IMAP 실제), label(한글 표시)}]."""
     with MailBox(host).login(email, password) as mb:
-        return [f.name for f in mb.folder.list()]
+        return [{"name": f.name, "label": _folder_label(f.name, getattr(f, "flags", ()))}
+                for f in mb.folder.list()]
 
 
 def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,

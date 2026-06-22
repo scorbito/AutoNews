@@ -34,7 +34,8 @@
     <div style="display:flex; flex-direction:column; gap:6px; margin:8px 0;">
       {% for f in folders %}
       <label style="font-weight:normal;">
-        <input type="checkbox" name="folders" value="{{ f }}" {% if f in selected %}checked{% endif %}> {{ f }}
+        <input type="checkbox" name="folders" value="{{ f.name }}" {% if f.name in selected %}checked{% endif %}>
+        {{ f.label }}{% if f.label != f.name %} <span class="muted">({{ f.name }})</span>{% endif %}
       </label>
       {% endfor %}
     </div>
