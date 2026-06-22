@@ -39,7 +39,8 @@ def publish_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT):
 
 
 def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sender: str,
-                        mode: str, tenant_id: int = db.DEFAULT_TENANT) -> list[int]:
+                        mode: str, tenant_id: int = db.DEFAULT_TENANT,
+                        message_pk: int | None = None) -> list[int]:
     """추출 텍스트 → split → 이미지매칭 → generate → (auto면)발행. 기사 id 목록 반환."""
     res = run_split(text, subject=subject,
                     from_name=(sender or "").split("<")[0].strip(),
@@ -56,7 +57,11 @@ def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sende
             category_hint=a.get("category_hint"), status="split")
         ids.append(aid)
     conn.commit()
-    images.match_images_to_articles(conn, attachment_id, tenant_id=tenant_id)
+    # 이미지 매칭(독립 단계): 메일 전체 이미지(zip+임베드)를 기사에 배정.
+    if message_pk is not None:
+        images.match_message_images(conn, message_pk, attachment_id, tenant_id=tenant_id)
+    else:
+        images.match_images_to_articles(conn, attachment_id, tenant_id=tenant_id)
     for aid in ids:
         articlegen.generate_for_article(conn, aid, tenant_id=tenant_id)
         if mode == "auto":
@@ -103,7 +108,8 @@ def process_message(conn, message_pk: int, mode: str | None = None,
                                   extracted_text=body, extract_status="done")
         conn.commit()
         result["articles"] = _split_and_generate(
-            conn, pk, body, msg["subject"], msg["sender"], mode, tenant_id)
+            conn, pk, body, msg["subject"], msg["sender"], mode, tenant_id,
+            message_pk=message_pk)
         return result
 
     # 3) 첨부 기반: 본문 추출용 1건 선택
@@ -112,5 +118,6 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     if primary:
         chosen = next((r for r in att_rows if r["filename"] == primary["filename"]), att_rows[0])
     result["articles"] = _split_and_generate(
-        conn, chosen["id"], chosen["extracted_text"], msg["subject"], msg["sender"], mode, tenant_id)
+        conn, chosen["id"], chosen["extracted_text"], msg["subject"], msg["sender"], mode, tenant_id,
+        message_pk=message_pk)
     return result

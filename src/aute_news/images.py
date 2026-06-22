@@ -22,29 +22,103 @@ _MIN_SIDE = 150
 _PHOTO_SIDE = 500
 
 
-def match_images_to_articles(conn, attachment_id: int, tenant_id: int = db.DEFAULT_TENANT) -> dict:
-    """추출된 이미지를 기사에 매칭 (이식명세 §6).
-    단건이면 전부 그 기사로. 다건이면 파일명 번호(사진N-M / N_) 로 매칭, 실패 시 미매칭(검토)."""
-    articles = db.list_articles(conn, attachment_id, tenant_id=tenant_id)
-    imgs = db.list_images(conn, attachment_id, tenant_id=tenant_id)
-    stats = {"matched": 0, "unmatched": 0}
+def _seq_from_name(name: str | None) -> int | None:
+    """파일명 선두 번호 추출 — '7-2.'→7, '사진3_'→3. 폴백 힌트용."""
+    import os
+    base = os.path.basename(name or "")
+    m = re.search(r"(?:사진|photo)?\s*(\d+)[-_.]", base) or re.match(r"\s*(\d+)", base)
+    return int(m.group(1)) if m else None
+
+
+def _img_name(im) -> str:
+    import os
+    return im["orig_name"] or os.path.basename(im["path"] or "")
+
+
+def _llm_assign(articles: list, imgs: list) -> dict:
+    """LLM(기본 flash-lite)에게 '기사 제목 ↔ 사진 파일명' 매칭을 맡긴다.
+
+    반환 {image_id: article_seq | None}. 전체를 한 번에 보고 배정(전역 시야).
+    """
+    from .llm import get_llm
+    art_lines = "\n".join(
+        f"  {a['sequence_number']}. {a['headline'] or a['title'] or ''}" for a in articles)
+    img_lines = "\n".join(f"  [{im['id']}] {_img_name(im)}" for im in imgs)
+    system = (
+        "너는 보도자료 사진을 기사에 배정하는 편집 보조다. "
+        "기사 목록(번호. 제목)과 사진 목록([id] 파일명)이 주어진다. "
+        "각 사진을 가장 알맞은 기사 '번호'(article_seq)에 배정하라. "
+        "파일명 앞 숫자(예 '7-2.'는 7번)와 파일명에 담긴 제목을 단서로 쓴다. "
+        "어느 기사에도 맞지 않으면 article_seq를 null로 두라. 한 기사에 사진 여러 장 가능. "
+        '반드시 JSON만: {"assignments":[{"image_id":정수,"article_seq":정수 또는 null}]}'
+    )
+    user = f"## 기사\n{art_lines}\n\n## 사진\n{img_lines}"
+    res = get_llm().complete_json(system, user, temperature=0.0)
+    out: dict[int, int | None] = {}
+    for a in res.get("assignments", []) or []:
+        try:
+            seq = a.get("article_seq")
+            out[int(a["image_id"])] = int(seq) if seq is not None else None
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
+
+
+def match_message_images(conn, message_pk: int, primary_attachment_id: int,
+                         tenant_id: int = db.DEFAULT_TENANT, use_llm: bool = True) -> dict:
+    """메시지 전체 이미지(zip+임베드) → 기사 매칭. 독립 단계('퍼즐 맞추기').
+
+    단건이면 전부 그 기사로. 다건이면 LLM이 제목·파일명으로 배정, 빈 곳은 번호 정규식 폴백.
+    """
+    articles = db.list_articles(conn, primary_attachment_id, tenant_id=tenant_id)
+    imgs = [im for im in db.list_message_images(conn, message_pk, tenant_id=tenant_id)
+            if im["selected"]]
+    stats = {"articles": len(articles), "images": len(imgs), "matched": 0, "unmatched": 0,
+             "llm": False}
     if not articles or not imgs:
         return stats
 
     by_seq = {a["sequence_number"]: a["id"] for a in articles}
+    if len(articles) == 1:
+        for im in imgs:
+            db.assign_image_article(conn, im["id"], articles[0]["id"], tenant_id=tenant_id)
+        stats["matched"] = len(imgs)
+        conn.commit()
+        return stats
+
+    assign: dict[int, int | None] = {}
+    if use_llm:
+        try:
+            assign = _llm_assign(articles, imgs)
+            stats["llm"] = True
+        except Exception:  # noqa: BLE001 (LLM 실패 시 정규식 폴백)
+            assign = {}
+
     for im in imgs:
-        if not im["selected"]:
-            continue
+        seq = assign.get(im["id"])
+        if seq is None:                       # LLM 미배정 → 파일명 번호 폴백
+            seq = _seq_from_name(im["orig_name"] or im["path"])
+        target = by_seq.get(seq)
+        db.assign_image_article(conn, im["id"], target, tenant_id=tenant_id)
+        stats["matched" if target else "unmatched"] += 1
+    conn.commit()
+    return stats
+
+
+def match_images_to_articles(conn, attachment_id: int, tenant_id: int = db.DEFAULT_TENANT) -> dict:
+    """(레거시·단일첨부) 한 첨부의 이미지를 그 첨부의 기사들에 매칭."""
+    articles = db.list_articles(conn, attachment_id, tenant_id=tenant_id)
+    imgs = [im for im in db.list_images(conn, attachment_id, tenant_id=tenant_id) if im["selected"]]
+    stats = {"matched": 0, "unmatched": 0}
+    if not articles or not imgs:
+        return stats
+    by_seq = {a["sequence_number"]: a["id"] for a in articles}
+    for im in imgs:
         if len(articles) == 1:
             db.assign_image_article(conn, im["id"], articles[0]["id"], tenant_id=tenant_id)
             stats["matched"] += 1
             continue
-        # 다건: 파일명에서 선두 번호 추출 (basename 기준, 폴더 prefix 무시)
-        import os
-        base = os.path.basename(im["path"] or "")
-        m = re.search(r"(?:사진|photo)?\s*(\d+)[-_]", base) or re.match(r"\s*(\d+)", base)
-        seq = int(m.group(1)) if m else None
-        target = by_seq.get(seq)
+        target = by_seq.get(_seq_from_name(im["orig_name"] or im["path"]))
         db.assign_image_article(conn, im["id"], target, tenant_id=tenant_id)
         stats["matched" if target else "unmatched"] += 1
     return stats

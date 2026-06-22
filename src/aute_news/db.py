@@ -289,6 +289,14 @@ def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> 
         (attachment_id, tenant_id)).fetchall()
 
 
+def list_message_images(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:
+    """한 메일(메시지)의 모든 첨부에 걸친 이미지 — zip 번들 + 문서 임베드 통합."""
+    return conn.execute(
+        """SELECT i.* FROM images i JOIN attachments a ON a.id=i.attachment_id
+           WHERE a.message_pk=? AND i.tenant_id=? ORDER BY i.id""",
+        (message_pk, tenant_id)).fetchall()
+
+
 def get_article(conn, article_id: int, tenant_id: int = DEFAULT_TENANT):
     return conn.execute("SELECT * FROM articles WHERE id=? AND tenant_id=?",
                         (article_id, tenant_id)).fetchone()
