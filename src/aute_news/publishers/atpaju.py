@@ -112,8 +112,16 @@ class AtpajuPublisher(Publisher):
         }
         return s.post(
             f"{self.base}/news/userArticleWrite.php", data=data,
-            headers={"Origin": self.base, "Referer": form_url,
-                     "Upgrade-Insecure-Requests": "1"},
+            headers={
+                "Origin": self.base, "Referer": form_url,
+                "Upgrade-Insecure-Requests": "1",
+                "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
+                           "image/avif,image/webp,image/apng,*/*;q=0.8"),
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Cache-Control": "no-cache", "Pragma": "no-cache",
+                "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin", "Sec-Fetch-User": "?1",
+            },
             timeout=30)
 
     def _upload_image(self, s: requests.Session, idxno: str, path: str) -> None:
@@ -159,7 +167,7 @@ class AtpajuPublisher(Publisher):
                     True, url=f"(dry-run) idxno={idxno} 발급 성공 — 실제 게시 차단됨",
                     message=f"dry-run: 로그인·기사ID까지만 검증. 등록 안 함 ({reason})")
 
-            self._write(s, idxno, headline, subtitle, body_html, pub_date, section)
+            wr = self._write(s, idxno, headline, subtitle, body_html, pub_date, section)
             for im in images or []:
                 self._upload_image(s, idxno, im["path"])
             # ND소프트는 승인 흐름(작성중→승인요청→발행)이 있어 '작성중(초안)'으로 들어간다.
@@ -169,9 +177,11 @@ class AtpajuPublisher(Publisher):
                 vr = s.get(edit_url, timeout=20)
                 tm = re.search(r'name=["\']title["\'][^>]*value=["\']([^"\']*)["\']', vr.text)
                 if not (tm and tm.group(1).strip()):
+                    snippet = re.sub(r"\s+", " ", (wr.text or ""))[:200]
                     return PublishResult(
                         False, url=edit_url,
-                        message="저장 후 제목이 비어 있음 — 저장 실패(필드/세션 확인 필요)")
+                        message=(f"저장 실패. write 응답 {wr.status_code}, "
+                                 f"최종URL={wr.url} | 본문: {snippet}"))
             except requests.RequestException:
                 pass
             return PublishResult(
