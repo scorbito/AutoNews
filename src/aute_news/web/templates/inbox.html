@@ -2,14 +2,17 @@
 {% block title %}수집함{% endblock %}
 {% block body %}
 <div class="page-head">
-  <div class="row" style="gap:14px;">
-    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
-    <h2 style="margin:0;">수집함 <span class="sub">{{ msgs|length }}건</span></h2>
-  </div>
+  <h2>수집함 <span class="sub">{{ msgs|length }}건</span></h2>
 </div>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
-<p class="muted" style="margin-top:-8px; margin-bottom:14px;">
-  ① <b>메일 수집</b>으로 가져온 뒤 → ② 메일을 골라 <b>기사 생성</b>(분할·사진매칭) → ③ 발행은 기사 메뉴에서.</p>
+
+<div style="text-align:center; margin:6px 0 18px;">
+  <form method="post" action="/collect">
+    <button type="submit" style="padding:12px 28px; font-size:15px;">📥 메일 수집</button>
+  </form>
+  <p class="muted" style="margin-top:10px;">
+    ① <b>메일 수집</b>으로 가져온 뒤 → ② 메일을 골라 <b>기사 생성</b>(분할·사진매칭) → ③ 발행은 기사 메뉴에서.</p>
+</div>
 
 <form method="post" action="/messages/bulk-process"
       onsubmit="this.querySelector('#bulkbtn').textContent='처리중… (선택 메일 수만큼 시간이 걸려요)'; this.querySelector('#bulkbtn').disabled=true;">
