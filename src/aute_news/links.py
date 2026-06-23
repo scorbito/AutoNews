@@ -6,10 +6,16 @@
 from __future__ import annotations
 
 import re
+from urllib.request import Request, urlopen
 
 from .llm import get_llm
 
 _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+')
+
+# 파일 다운로드 링크로 보이는 URL 패턴(첨부 다운로드). 안전: 수신거부 등은 건드리지 않음.
+_DOWNLOAD_PAT = re.compile(r"/(?:download|attachfile|filedown|atchfile|fileDown|getfile)",
+                           re.IGNORECASE)
+_MAX_DOWNLOAD = 30 * 1024 * 1024  # 30MB
 _ASSET_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".css", ".js")
 _SKIP_HINT = ("unsubscribe", "수신거부", "/logout", "login", "mailto:", "googleusercontent",
               "/property/img", "/thumb/", "tracking", "pixel", "utm_", "facebook.com",
@@ -62,3 +68,54 @@ def pick_article_urls(candidates: list[dict]) -> list[str]:
             seen.add(u)
             picked.append(u)
     return picked
+
+
+def extract_download_links(body: str) -> list[str]:
+    """본문에서 '파일 다운로드' 링크만 추출(패턴 기반, 본문 순서 유지·중복 제거).
+
+    수신거부/추적 링크는 건드리지 않도록 다운로드 URL 패턴이 있는 것만 고른다.
+    """
+    out, seen = [], set()
+    for m in _URL_RE.finditer(body or ""):
+        url = m.group(0).replace("&amp;", "&").rstrip(").,;'\"")
+        if not _DOWNLOAD_PAT.search(url):
+            continue
+        if any(h in url.lower() for h in ("unsubscribe", "수신거부", "reject")):
+            continue
+        if url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out
+
+
+def _filename_from_cd(cd: str) -> str | None:
+    """Content-Disposition 에서 파일명 추출(RFC5987 및 latin-1로 깨진 UTF-8 복구)."""
+    if not cd:
+        return None
+    m = re.search(r"filename\*\s*=\s*(?:UTF-8'')?\"?([^\";]+)\"?", cd, re.IGNORECASE)
+    if m:
+        from urllib.parse import unquote
+        return unquote(m.group(1))
+    m = re.search(r'filename\s*=\s*"?([^";]+)"?', cd, re.IGNORECASE)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    try:                                  # 서버가 UTF-8 바이트를 latin-1로 보낸 흔한 경우 복구
+        return raw.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return raw
+
+
+def download_file(url: str, timeout: int = 30) -> tuple[str, bytes] | None:
+    """다운로드 링크 → (파일명, 바이트). 실패하면 None."""
+    try:
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0 aute_news"})
+        with urlopen(req, timeout=timeout) as r:  # noqa: S310
+            cd = r.headers.get("Content-Disposition") or ""
+            data = r.read(_MAX_DOWNLOAD + 1)
+    except Exception:  # noqa: BLE001
+        return None
+    if not data or len(data) > _MAX_DOWNLOAD:
+        return None
+    name = _filename_from_cd(cd) or url.rstrip("/").rsplit("/", 1)[-1]
+    return name, data

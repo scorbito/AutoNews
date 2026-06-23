@@ -305,15 +305,18 @@ def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> li
 
 
 def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> None:
-    """재처리용 — weblink/body 합성 첨부와 그에 딸린 기사·이미지 제거(중복 누적 방지)."""
-    sub = ("SELECT id FROM attachments WHERE message_pk=? AND tenant_id=? "
-           "AND format IN ('weblink','body')")
+    """재처리용 — 합성 첨부(weblink/body, 다운로드 파일)와 딸린 기사·이미지 제거.
+
+    다운로드 링크로 받은 파일은 path 가 'attachments/{t}/dl/...' 라 그것도 정리한다.
+    """
+    cond = "(format IN ('weblink','body') OR path LIKE '%%/dl/%%')"
+    sub = (f"SELECT id FROM attachments WHERE message_pk=? AND tenant_id=? AND {cond}")
     conn.execute(f"DELETE FROM images WHERE tenant_id=? AND attachment_id IN ({sub})",
                  (tenant_id, message_pk, tenant_id))
     conn.execute(f"DELETE FROM articles WHERE tenant_id=? AND attachment_id IN ({sub})",
                  (tenant_id, message_pk, tenant_id))
-    conn.execute("DELETE FROM attachments WHERE message_pk=? AND tenant_id=? "
-                 "AND format IN ('weblink','body')", (message_pk, tenant_id))
+    conn.execute(f"DELETE FROM attachments WHERE message_pk=? AND tenant_id=? AND {cond}",
+                 (message_pk, tenant_id))
 
 
 def list_message_images(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:

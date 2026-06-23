@@ -13,10 +13,17 @@ import os
 from urllib.parse import urlparse
 
 from . import articlegen, db, images, links
-from .extractors import extract_url, select_primary
+from .extractors import ExtractError, detect_format, extract_bytes, extract_url, select_primary
+from .extractors.archive import IMAGE_EXTS
+from .extractors.base import ImageAsset
 from .publishers import get_publisher
 from .split import run_split
+from .storage import get_storage, mime_for
 from .triage import build_meta, run_triage
+
+
+def _safe(s: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (s or ""))[:80]
 
 
 def _mode() -> str:
@@ -104,6 +111,51 @@ def _generate_link_articles(conn, message_pk: int, urls: list[str], sender: str,
     return ids
 
 
+def _generate_download_articles(conn, message_pk: int, urls: list[str], mode: str,
+                                tenant_id: int = db.DEFAULT_TENANT) -> list[int]:
+    """본문의 파일 다운로드 링크 → 다운로드 후 문서별 기사화.
+
+    순서 기반 그룹핑: 문서(hwp/pdf/…)가 그룹을 시작하고, 이어지는 이미지는 그 문서에 속함.
+    (정부 보도자료 배포: 보도자료당 본문 1 + 참고이미지 N 이 순서대로 나열됨)
+    """
+    files = []
+    for url in urls:
+        got = links.download_file(url)
+        if got:
+            files.append((got[0], got[1], url))
+    groups, cur = [], None
+    for fn, data, url in files:
+        fmt = detect_format(fn)
+        ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
+        if fmt in ("hwp", "hwpx", "pdf", "docx", "doc"):
+            cur = {"fn": fn, "data": data, "url": url, "fmt": fmt, "imgs": []}
+            groups.append(cur)
+        elif ext in IMAGE_EXTS and cur is not None:
+            cur["imgs"].append((fn, data, ext))
+
+    ids = []
+    for idx, g in enumerate(groups):
+        try:
+            draft = extract_bytes(g["data"], g["fn"])
+        except ExtractError:
+            continue
+        # 외부 다운로드 이미지(참고자료/사진)를 문서 본문에 합쳐 함께 저장
+        for ifn, idata, iext in g["imgs"]:
+            draft.images.append(ImageAsset(data=idata, ext=iext, source_ref=ifn))
+        key = f"attachments/{tenant_id}/dl/{message_pk}_{idx}_{_safe(g['fn'])}"
+        get_storage().put(key, g["data"], mime_for(g["fmt"]))
+        pk = db.insert_attachment(
+            conn, tenant_id=tenant_id, message_pk=message_pk, filename=g["fn"],
+            format=g["fmt"], path=key, size=len(g["data"]),
+            extracted_text=draft.body_text, extract_status="done")
+        conn.commit()
+        if draft.images:
+            images.process_images(conn, pk, draft, tenant_id=tenant_id)
+        # 다운로드 문서 = 보도자료 1건 → split(보통 1) + 첨부단위 이미지 매칭(message_pk 미전달)
+        ids += _split_and_generate(conn, pk, draft.body_text, g["fn"], "", mode, tenant_id)
+    return ids
+
+
 def process_message(conn, message_pk: int, mode: str | None = None,
                     tenant_id: int = db.DEFAULT_TENANT) -> dict:
     mode = mode or _mode()
@@ -133,8 +185,11 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     conn.commit()
 
     body = msg["body_text"] or ""
-    # 본문 기사 링크(있으면) — 첨부와 별개로 링크당 1기사. 다이제스트 본문 판별에도 사용.
-    cands = links.extract_link_candidates(body)
+    # 본문 파일 다운로드 링크(첨부가 링크로 온 경우)
+    download_urls = links.extract_download_links(body)
+    # 본문 기사 링크(웹 기사 페이지) — 다운로드 링크는 제외하고 LLM이 선별
+    dl_set = set(download_urls)
+    cands = [c for c in links.extract_link_candidates(body) if c["url"] not in dl_set]
     link_urls = links.pick_article_urls(cands) if cands else []
 
     ids: list[int] = []
@@ -145,8 +200,8 @@ def process_message(conn, message_pk: int, mode: str | None = None,
         (message_pk, tenant_id)).fetchall()
 
     if pipeline == "BODY_AS_ARTICLE" or not att_rows:
-        # 본문이 진짜 기사일 때만 본문 기사화(링크 다이제스트면 링크로만 처리)
-        if not link_urls and len(body.strip()) >= 50:
+        # 본문이 진짜 기사일 때만 본문 기사화(링크/파일 다이제스트면 그쪽으로만 처리)
+        if not link_urls and not download_urls and len(body.strip()) >= 50:
             pk = db.insert_attachment(conn, tenant_id=tenant_id, message_pk=message_pk,
                                       filename="(본문)", format="body", path="", size=len(body),
                                       extracted_text=body, extract_status="done")
@@ -166,6 +221,10 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     # 3) 본문 링크 기사화 (첨부와 병행)
     if link_urls:
         ids += _generate_link_articles(conn, message_pk, link_urls, msg["sender"], mode, tenant_id)
+
+    # 4) 본문 파일 다운로드 링크 기사화 (정부 보도자료 배포 등)
+    if download_urls:
+        ids += _generate_download_articles(conn, message_pk, download_urls, mode, tenant_id)
 
     if not ids:
         result["skipped"] = "기사화할 내용 없음"
