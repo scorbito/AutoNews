@@ -1,10 +1,7 @@
 {% extends "base.html" %}
 {% block title %}기사 목록{% endblock %}
 {% block body %}
-<div class="page-head">
-  <h2>기사 <span class="sub">{{ total }}건</span></h2>
-  <a href="/inbox" class="btn secondary sm">📨 수집함에서 메일 가져오기</a>
-</div>
+<h2 style="text-align:center; margin:0 0 18px;">기사 <span class="sub">{{ total }}건</span></h2>
 
 <div class="row" style="margin-bottom:18px;">
   {% for key, name in filters %}
@@ -16,11 +13,10 @@
 
 <form method="post" action="/articles/bulk">
   <div class="row" style="position:sticky; top:0; background:var(--bg); padding:10px 0; z-index:5;">
-    <label style="font-weight:normal;"><input type="checkbox" id="checkall"> 전체</label>
-    <span class="muted">선택 일괄:</span>
-    <button class="gray" type="submit" name="action" value="review">✓ 검토완료</button>
-    <button class="green" type="submit" name="action" value="publish">🚀 선택 발행</button>
+    <label style="font-weight:normal; display:inline-flex; align-items:center; gap:6px; margin:0;">
+      <input type="checkbox" id="checkall" style="margin:0;"> 전체</label>
     <span class="muted" id="selcount">0건 선택</span>
+    <button class="green" type="submit" name="action" value="publish">🚀 선택 발행</button>
   </div>
 
   {% for g in groups %}
@@ -32,11 +28,14 @@
         </label>
         <span class="muted"> · 기사 {{ g.articles|length }}건{% if g.date %} · {{ g.date }}{% endif %}</span>
       </div>
+      <button type="button" class="secondary sm grp-review"
+              data-ids="{% for a in g.articles %}{{ a.id }}{{ ',' if not loop.last }}{% endfor %}">
+        ✓ 검토완료</button>
     </div>
     <table style="margin:0;">
       <thead>
         <tr><th style="width:34px;"></th><th style="width:40px;">#</th><th>제목</th>
-            <th style="width:90px;">카테고리</th><th style="width:70px;">사진</th><th style="width:80px;">상태</th></tr>
+            <th style="width:90px;">카테고리</th><th style="width:70px;">사진</th><th style="width:96px;">상태</th></tr>
       </thead>
       <tbody>
       {% for a in g.articles %}
@@ -54,11 +53,28 @@
   </div>
   {% endfor %}
 </form>
+
+<!-- 그룹별 검토완료 전용(중첩 폼 방지: 메인 폼 밖에 둠) -->
+<form id="grpReviewForm" method="post" action="/articles/bulk" style="display:none;">
+  <input type="hidden" name="action" value="review">
+</form>
+
 {% if not groups %}
-<div class="empty">아직 기사가 없습니다.<br>오른쪽 위 <b>📥 메일 수집</b>으로 시작하세요.</div>
+<div class="empty">아직 기사가 없습니다.<br>왼쪽 <b>수집함</b>에서 메일을 수집·처리하면 여기에 기사가 모입니다.</div>
 {% endif %}
 
 <script>
+  // 그룹 헤더의 '검토완료' → 그 메일의 기사 전체를 검토완료 처리
+  document.querySelectorAll('.grp-review').forEach(b => b.addEventListener('click', () => {
+    const f = document.getElementById('grpReviewForm');
+    f.querySelectorAll('input[name="ids"]').forEach(i => i.remove());
+    (b.dataset.ids || '').split(',').filter(Boolean).forEach(id => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'ids'; inp.value = id; f.appendChild(inp);
+    });
+    f.submit();
+  }));
+
   const boxes = () => Array.from(document.querySelectorAll('.sel'));
   const count = () => {
     document.getElementById('selcount').textContent =

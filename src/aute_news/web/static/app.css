@@ -151,6 +151,7 @@ tbody tr:hover td { background: var(--brand-50); }
 .tag {
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
   border-radius: var(--r-pill); font-size: 12px; font-weight: 600; line-height: 1.5;
+  white-space: nowrap;
 }
 .s-done, .s-reviewed { background: var(--green-bg); color: var(--green-fg); }
 .s-manual, .s-pending { background: var(--red-bg); color: var(--red-fg); }
