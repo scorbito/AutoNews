@@ -96,17 +96,30 @@ class AtpajuPublisher(Publisher):
         """
         form_url = (f"{self.base}/news/userArticleWriteForm.html"
                     f"?mode=modify&idxno={idxno}&inputState=Y")
-        s.get(form_url, timeout=20)        # 슬롯을 입력모드로 연다
+        fh = s.get(form_url, timeout=20).text   # 슬롯을 입력모드로 열고 기본값을 읽는다
+
+        def _fv(name: str) -> str:
+            tm = re.search(r'<input[^>]*name=["\']' + re.escape(name) + r'["\'][^>]*>', fh, re.I)
+            if not tm:
+                return ""
+            vm = re.search(r'value=["\']([^"\']*)["\']', tm.group(0))
+            return vm.group(1) if vm else ""
+
+        # 로그인 사용자 정보·날짜는 폼 기본값을 그대로 사용(빈 이메일 등 검증 실패 방지)
+        uname = _fv("user_name") or self.user_name
+        uemail = _fv("user_email") or self.user_email
+        edate = _fv("embargo_date") or pub_date
+        etime = _fv("embargo_time") or "00:00"
         data = {
             "uora": "U", "article_tag_use": "", "mode": "modify", "idxno": idxno,
             "area": "D", "view_level": "A", "view_recognition": "Y", "embargo": "N",
             "autoSave": "1", "returnAIPage": "", "ad_article_check": "0",
             "ad_sendid_check": "", "send_id": "", "level": "B", "recognition": "I",
-            "article_type": "B", "embargo_date": pub_date, "embargo_time": "00:00",
+            "article_type": "B", "embargo_date": edate, "embargo_time": etime,
             "onoff": "O", "serial_number": "0", "page": "0", "pdf": "N",
             "pub_date": pub_date, "article_source": "self",
             "sectionCode": section or self.section, "subSectionCode": "", "serialCode": "",
-            "user_id": self.uid, "user_name": self.user_name, "user_email": self.user_email,
+            "user_id": self.uid, "user_name": uname, "user_email": uemail,
             "title": headline, "shoulder_title": "", "portal_title": "",
             "subTitle": subtitle, "FCKeditor1": body_html, "keyword": "",
         }
