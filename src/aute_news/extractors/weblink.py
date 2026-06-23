@@ -7,12 +7,31 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 import trafilatura
 
 from .base import ArticleDraft, ExtractError, ImageAsset
+
+# 도메인 → 매체명(메타·제목으로 못 잡을 때 폴백)
+_DOMAIN_NAMES = {
+    "newswire.co.kr": "뉴스와이어",
+    "yna.co.kr": "연합뉴스",
+    "newsis.com": "뉴시스",
+}
+
+
+def _source_name(meta, url: str, title: str) -> str:
+    """매체명 추정: 메타 sitename → 제목 접미사('… - 뉴스와이어') → 도메인 맵 → 도메인."""
+    name = getattr(meta, "sitename", None) if meta else None
+    if name and name.strip():
+        return name.strip()
+    m = re.search(r"[-|]\s*([^-|]{2,20})\s*$", title or "")
+    if m:
+        return m.group(1).strip()
+    host = urlparse(url).netloc.replace("www.", "")
+    return _DOMAIN_NAMES.get(host, host)
 
 _IMG_SRC_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 _IMG_EXT_RE = re.compile(r"\.(jpe?g|png|gif|webp)(\?|$)", re.IGNORECASE)
@@ -79,5 +98,6 @@ def extract_url(url: str) -> ArticleDraft:
         body_text=body.strip(),
         images=_download_images(downloaded, url, meta),
         source_url=url,
+        source_name=_source_name(meta, url, title),
         extracted_at=datetime.now(),
     )

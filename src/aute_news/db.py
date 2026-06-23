@@ -304,11 +304,27 @@ def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> li
         (tenant_id, limit)).fetchall()
 
 
+def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> None:
+    """재처리용 — weblink/body 합성 첨부와 그에 딸린 기사·이미지 제거(중복 누적 방지)."""
+    sub = ("SELECT id FROM attachments WHERE message_pk=? AND tenant_id=? "
+           "AND format IN ('weblink','body')")
+    conn.execute(f"DELETE FROM images WHERE tenant_id=? AND attachment_id IN ({sub})",
+                 (tenant_id, message_pk, tenant_id))
+    conn.execute(f"DELETE FROM articles WHERE tenant_id=? AND attachment_id IN ({sub})",
+                 (tenant_id, message_pk, tenant_id))
+    conn.execute("DELETE FROM attachments WHERE message_pk=? AND tenant_id=? "
+                 "AND format IN ('weblink','body')", (message_pk, tenant_id))
+
+
 def list_message_images(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:
-    """한 메일(메시지)의 모든 첨부에 걸친 이미지 — zip 번들 + 문서 임베드 통합."""
+    """한 메일의 첨부 이미지 — zip 번들 + 문서 임베드 통합.
+
+    weblink/body 첨부 이미지는 제외(그건 각 링크 기사에 첨부 단위로 따로 매칭됨).
+    """
     return conn.execute(
         """SELECT i.* FROM images i JOIN attachments a ON a.id=i.attachment_id
-           WHERE a.message_pk=? AND i.tenant_id=? ORDER BY i.id""",
+           WHERE a.message_pk=? AND i.tenant_id=? AND a.format NOT IN ('weblink','body')
+           ORDER BY i.id""",
         (message_pk, tenant_id)).fetchall()
 
 

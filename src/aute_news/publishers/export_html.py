@@ -57,7 +57,7 @@ class HtmlExportPublisher(Publisher):
             cap = html.escape(im.get("caption") or "")
             src = html.escape(im.get("source") or "")
             if src:
-                cap = (cap + " " if cap else "") + f"(출처: {src})"
+                cap = (cap + " " if cap else "") + f"사진 제공: {src}"
             figs.append(f"<figure><img src='data:{mime};base64,{b64}' style='max-width:100%'>"
                         f"<figcaption>{cap}</figcaption></figure>")
         img_html = "\n".join(figs)

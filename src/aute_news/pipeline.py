@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from urllib.parse import urlparse
 
 from . import articlegen, db, images, links
 from .extractors import extract_url, select_primary
@@ -87,7 +88,8 @@ def _generate_link_articles(conn, message_pk: int, urls: list[str], sender: str,
             extract_status="done")
         conn.commit()
         if draft.images:
-            images.process_images(conn, pk, draft, tenant_id=tenant_id, source=url)
+            src_name = draft.source_name or urlparse(url).netloc.replace("www.", "")
+            images.process_images(conn, pk, draft, tenant_id=tenant_id, source=src_name)
         aid = db.insert_article(
             conn, tenant_id=tenant_id, attachment_id=pk, sequence_number=1,
             title=draft.title or "", body=draft.body_text or "",
@@ -125,6 +127,10 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     if pipeline in ("SKIP", "NEEDS_REVIEW"):
         result["skipped"] = True
         return result
+
+    # 재처리 시 이전 합성 첨부(weblink/body) 정리 → 링크 기사 중복 누적 방지
+    db.clear_synthetic_attachments(conn, message_pk, tenant_id=tenant_id)
+    conn.commit()
 
     body = msg["body_text"] or ""
     # 본문 기사 링크(있으면) — 첨부와 별개로 링크당 1기사. 다이제스트 본문 판별에도 사용.

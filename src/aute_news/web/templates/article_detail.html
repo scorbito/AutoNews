@@ -61,7 +61,7 @@
       {% for im in images %}
       <div style="text-align:center; max-width:120px;">
         <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
-        {% if im.source %}<div class="muted" style="font-size:10px;">출처: {{ im.source }}</div>{% endif %}
+        {% if im.source %}<div class="muted" style="font-size:10px;">사진 제공: {{ im.source }}</div>{% endif %}
       </div>
       {% endfor %}
     </div>

@@ -44,7 +44,7 @@
   <figure>
     <img src="/img/{{ im.id }}" alt="">
     {% if im.caption or im.source %}
-    <figcaption>{{ im.caption }}{% if im.source %} <span style="color:#aaa;">(출처: {{ im.source }})</span>{% endif %}</figcaption>
+    <figcaption>{{ im.caption }}{% if im.source %} <span style="color:#aaa;">사진 제공: {{ im.source }}</span>{% endif %}</figcaption>
     {% endif %}
   </figure>
   {% endfor %}

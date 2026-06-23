@@ -28,6 +28,7 @@ class ArticleDraft:
     body_text: str = ""
     images: list[ImageAsset] = field(default_factory=list)
     source_url: str | None = None
+    source_name: str = ""         # 매체명(웹 출처 표기용, 예: "뉴스와이어")
     extracted_at: datetime | None = None
 
 
