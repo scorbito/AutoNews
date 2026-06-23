@@ -4,6 +4,15 @@
 <p><a href="/">← 기사 목록</a></p>
 <h2>내 설정 — 메일 · 자동 수집</h2>
 
+{% if welcome %}
+<div class="card" style="max-width:560px; margin-bottom:16px; background:#f1f6ff; border-color:#cfe0ff;">
+  <strong>🎉 가입을 환영합니다!</strong>
+  <p class="muted" style="margin:6px 0 0; line-height:1.7;">
+    이제 <b>①</b>에서 수집할 메일 계정을 연결하고, <b>②</b>에서 메일함을 고른 뒤,
+    기사 목록에서 <b>📥 메일 수집</b>으로 시작하세요. 자동 수집은 <b>③</b>에서 켤 수 있습니다.</p>
+</div>
+{% endif %}
+
 <!-- 1) 내 메일 계정 (기자 개인) -->
 <div class="card" style="max-width:560px; margin-bottom:16px;">
   <h3>① 내 메일 계정</h3>

@@ -34,7 +34,7 @@ AFILTERS = [("all", "전체"), ("drafted", "초안"), ("reviewed", "검토완료
 FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
            ("reviewed", "검토완료"), ("published", "발행됨")]
 
-_PUBLIC_PATHS = ("/login", "/logout")
+_PUBLIC_PATHS = ("/login", "/logout", "/signup")
 
 
 @app.middleware("http")
@@ -115,6 +115,32 @@ def login_post(request: Request, email: str = Form(...), password: str = Form(..
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_form(request: Request, error: str = ""):
+    return templates.TemplateResponse(request, "signup.html", {"error": error})
+
+
+@app.post("/signup")
+def signup_post(request: Request, paper: str = Form(...), email: str = Form(...),
+                password: str = Form(...)):
+    """셀프 가입 — 신문사(tenant) + 사용자 생성 후 자동 로그인 → 메일 설정으로."""
+    paper, email = paper.strip(), email.strip()
+    if len(password) < 6:
+        return RedirectResponse("/signup?error=pw", status_code=303)
+    conn = db.connect()
+    try:
+        tid, uid = admin.create_account(conn, paper, email, password)
+    except Exception as e:  # noqa: BLE001 (이메일 중복 등)
+        conn.close()
+        detail = "exists" if "registered" in str(e).lower() or "exists" in str(e).lower() else "fail"
+        return RedirectResponse(f"/signup?error={detail}", status_code=303)
+    conn.close()
+    # 가입 직후 바로 로그인 상태로 (셀프서비스: 가입→로그인→메일설정)
+    request.session.update({"user_id": uid, "email": email, "tenant_id": tid,
+                            "role": "editor", "is_admin": admin.is_admin(email)})
+    return RedirectResponse("/settings?welcome=1", status_code=303)
 
 
 # ── 관리자(SaaS 운영자) ───────────────────────────────
@@ -354,7 +380,7 @@ def collect_now(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_form(request: Request, mailerr: str = ""):
+def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
     from ..collector import list_imap_folders
     uid = request.session["user_id"]
     conn = db.connect()
@@ -377,7 +403,8 @@ def settings_form(request: Request, mailerr: str = ""):
          "folder_err": folder_err, "mailerr": mailerr,
          "mail_enabled": bool(mail.get("collect_enabled")),
          "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
-         "publisher": cfg.get("publisher") or "html"})
+         "publisher": cfg.get("publisher") or "html",
+         "welcome": welcome == "1", "email": request.session.get("email")})
 
 
 @app.post("/settings/mail")
