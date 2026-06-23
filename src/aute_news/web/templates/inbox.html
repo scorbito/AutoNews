@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% block title %}수집함{% endblock %}
 {% block body %}
-<div class="row" style="justify-content:space-between; align-items:center;">
-  <h2 style="margin:0;">수집함 <span class="muted">({{ msgs|length }}건)</span></h2>
-  <div class="row">
+<div class="page-head">
+  <div class="row" style="gap:14px;">
     <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
-    <a href="/" style="font-size:13px;">기사 목록 →</a>
+    <h2 style="margin:0;">수집함 <span class="sub">{{ msgs|length }}건</span></h2>
   </div>
 </div>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
-<p class="muted" style="margin-top:4px;">메일을 골라 <b>기사 생성</b>으로 처리합니다(분할·사진매칭·생성). 발행은 기사 목록에서.</p>
+<p class="muted" style="margin-top:-8px; margin-bottom:14px;">
+  ① <b>메일 수집</b>으로 가져온 뒤 → ② 메일을 골라 <b>기사 생성</b>(분할·사진매칭) → ③ 발행은 기사 메뉴에서.</p>
 
 <form method="post" action="/messages/bulk-process"
       onsubmit="this.querySelector('#bulkbtn').textContent='처리중… (선택 메일 수만큼 시간이 걸려요)'; this.querySelector('#bulkbtn').disabled=true;">
-  <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
+  <div class="row" style="position:sticky; top:0; background:var(--bg); padding:10px 0; z-index:5;">
     <label style="font-weight:normal;"><input type="checkbox" id="checkall"> 전체</label>
     <button type="submit" id="bulkbtn">⚡ 선택 일괄 기사 생성</button>
     <span class="muted" id="selcount">0건 선택</span>
@@ -52,7 +52,9 @@
     </tbody>
   </table>
 </form>
-{% if not msgs %}<p class="muted">수집된 메일이 없습니다. "📥 메일 수집"으로 가져오세요.</p>{% endif %}
+{% if not msgs %}
+<div class="empty">수집된 메일이 없습니다.<br>왼쪽 위 <b>📥 메일 수집</b>으로 가져오세요.</div>
+{% endif %}
 
 <script>
   const boxes = () => Array.from(document.querySelectorAll('.sel'));

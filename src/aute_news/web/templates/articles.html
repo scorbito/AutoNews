@@ -2,10 +2,8 @@
 {% block title %}기사 목록{% endblock %}
 {% block body %}
 <div class="page-head">
-  <div class="row" style="gap:14px;">
-    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
-    <h2 style="margin:0;">기사 <span class="sub">{{ total }}건</span></h2>
-  </div>
+  <h2>기사 <span class="sub">{{ total }}건</span></h2>
+  <a href="/inbox" class="btn secondary sm">📨 수집함에서 메일 가져오기</a>
 </div>
 
 <div class="row" style="margin-bottom:18px;">
