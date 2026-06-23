@@ -12,14 +12,13 @@ import json
 import os
 from urllib.parse import urlparse
 
-from . import articlegen, db, images, links
+from . import articlegen, db, images, links, router
 from .extractors import ExtractError, detect_format, extract_bytes, extract_url
 from .extractors.archive import IMAGE_EXTS
 from .extractors.base import ImageAsset
 from .publishers import get_publisher
 from .split import run_split
 from .storage import get_storage, mime_for
-from .triage import build_meta, run_triage
 
 _DOC_FORMATS = ("hwp", "hwpx", "pdf", "docx", "doc")
 
@@ -177,33 +176,34 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     if not msg:
         return {"error": "메일 없음"}
     atts = db.message_attachments(conn, message_pk, tenant_id=tenant_id)
+    body = msg["body_text"] or ""
 
-    # 1) Triage (없으면 수행)
-    pipeline = msg["pipeline"]
-    if not pipeline:
-        meta = build_meta(msg["subject"], msg["sender"], msg["body_text"], atts)
-        tri = run_triage(meta)
-        pipeline = tri["pipeline"]
-        db.set_triage(conn, message_pk, pipeline, tri.get("triage_confidence"),
-                      tri.get("reasoning", ""), tenant_id=tenant_id)
+    # 1) LLM 라우터 — 메일 통째로 보고 처리 계획(스킵/본문기사여부/기사링크/다운로드링크).
+    #    실패하면 코드 휴리스틱으로 폴백.
+    cand = links.extract_link_candidates(body)
+    plan = router.plan_email(msg["subject"], msg["sender"], body,
+                             [a["filename"] for a in atts], cand)
+    if plan is None:
+        dl = links.extract_download_links(body)
+        plan = {"skip": False, "body_is_article": True, "reason": "router 실패→휴리스틱",
+                "download_links": dl,
+                "article_links": links.pick_article_urls(
+                    [c for c in cand if c["url"] not in set(dl)])}
 
-    result = {"message_pk": message_pk, "pipeline": pipeline, "mode": mode, "articles": []}
-
-    if pipeline in ("SKIP", "NEEDS_REVIEW"):
+    db.set_triage(conn, message_pk, "SKIP" if plan["skip"] else "ROUTED", None,
+                  plan.get("reason", ""), tenant_id=tenant_id)
+    result = {"message_pk": message_pk,
+              "pipeline": "SKIP" if plan["skip"] else "ROUTED", "mode": mode, "articles": []}
+    if plan["skip"]:
         result["skipped"] = True
         return result
+
+    link_urls = plan["article_links"]
+    download_urls = plan["download_links"]
 
     # 재처리 시 이전 합성 첨부(weblink/body) 정리 → 링크 기사 중복 누적 방지
     db.clear_synthetic_attachments(conn, message_pk, tenant_id=tenant_id)
     conn.commit()
-
-    body = msg["body_text"] or ""
-    # 본문 파일 다운로드 링크(첨부가 링크로 온 경우)
-    download_urls = links.extract_download_links(body)
-    # 본문 기사 링크(웹 기사 페이지) — 다운로드 링크는 제외하고 LLM이 선별
-    dl_set = set(download_urls)
-    cands = [c for c in links.extract_link_candidates(body) if c["url"] not in dl_set]
-    link_urls = links.pick_article_urls(cands) if cands else []
 
     ids: list[int] = []
 
@@ -230,8 +230,10 @@ def process_message(conn, message_pk: int, mode: str | None = None,
         images.match_message_images_all(conn, message_pk, tenant_id=tenant_id)
         _generate_all(conn, art_ids, mode, tenant_id)
         ids += art_ids
-    elif not link_urls and not download_urls and len(body.strip()) >= 50:
-        # 문서 첨부 없음 + 링크/다운로드도 아님 → 본문 자체를 기사화
+    elif (plan["body_is_article"] and not link_urls and not download_urls
+          and len(body.strip()) >= 50):
+        # 문서·링크·다운로드 없음 + 라우터가 '본문이 기사'로 판단 → 본문 자체를 기사화
+        # (링크/다운로드가 있으면 본문은 표지/다이제스트로 보고 기사화 안 함)
         pk = db.insert_attachment(conn, tenant_id=tenant_id, message_pk=message_pk,
                                   filename="(본문)", format="body", path="", size=len(body),
                                   extracted_text=body, extract_status="done")
