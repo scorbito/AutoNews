@@ -406,6 +406,11 @@ def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
          "mail_enabled": bool(mail.get("collect_enabled")),
          "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
          "publisher": cfg.get("publisher") or "html",
+         "ndsoft_base_url": cfg.get("ndsoft_base_url") or "",
+         "cms_user": cfg.get("cms_user") or "",
+         "cms_user_email": cfg.get("cms_user_email") or "",
+         "cms_section": cfg.get("cms_section") or "",
+         "has_cms_password": bool(cfg.get("cms_password")),
          "welcome": welcome == "1", "email": request.session.get("email")})
 
 
@@ -439,15 +444,32 @@ async def settings_folders(request: Request):
 
 
 @app.post("/settings")
-def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: str = Form(""),
-                  cms_auto_submit: str = Form("0")):
+def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: str = Form("")):
     on = auto_mode == "1"
     conn = db.connect()
     db.set_tenant_config(conn, _tenant(request),
                          collect_enabled=1 if on else 0,
                          pipeline_mode="auto" if on else "review",
-                         collect_times=collect_times.strip(),
-                         cms_auto_submit=1 if cms_auto_submit == "1" else 0)
+                         collect_times=collect_times.strip())
+    conn.close()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/cms")
+def settings_cms(request: Request, publisher: str = Form("html"),
+                 ndsoft_base_url: str = Form(""), cms_user: str = Form(""),
+                 cms_password: str = Form(""), cms_user_email: str = Form(""),
+                 cms_section: str = Form(""), cms_auto_submit: str = Form("0")):
+    """기자(신문사) 본인이 CMS 발행 설정을 직접 저장 — 셀프 온보딩."""
+    conn = db.connect()
+    db.set_tenant_config(conn, _tenant(request),
+                         publisher=publisher or "html",
+                         ndsoft_base_url=ndsoft_base_url.strip(),
+                         cms_user=cms_user.strip(),
+                         cms_user_email=cms_user_email.strip(),
+                         cms_section=cms_section.strip(),
+                         cms_auto_submit=1 if cms_auto_submit == "1" else 0,
+                         cms_password=(cms_password or None))
     conn.close()
     return RedirectResponse("/settings", status_code=303)
 

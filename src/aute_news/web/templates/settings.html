@@ -96,21 +96,47 @@
     <div class="muted" style="font-size:12px;">
       · 특정시각: <code>09:00,15:00</code> (KST, 쉼표 구분)<br>
       · 일정 간격: <code>30m</code>(30분마다) · <code>60m</code>(1시간마다)</div>
-
-    <label style="display:block; margin-top:12px;">CMS 발행</label>
-    <label style="font-weight:normal;">
-      <input type="checkbox" name="cms_auto_submit" value="1" {% if cms_auto_submit %}checked{% endif %}>
-      저장 후 자동 승인요청 (작성중→승인요청; 끄면 작성중까지만)
-    </label>
-    <div class="muted" style="font-size:12px;">
-      CMS(atpaju) 발행 시 적용. 켜면 기사가 바로 승인요청 단계로 넘어가 수정 불가가 됩니다.
-      {% if publisher != 'atpaju' %}(현재 발행기: {{ publisher }} — CMS 연동 시 적용){% endif %}</div>
-
     <div class="row"><button type="submit">💾 저장</button></div>
   </form>
   <p class="muted" style="margin-top:12px;">
     · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
     · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화·발행됩니다.
   </p>
+</div>
+
+<!-- 4) 신문사 발행(CMS) 설정 (신문사 단위) -->
+<div class="card" style="max-width:560px; margin-top:16px;">
+  <h3>④ 발행(CMS) 설정</h3>
+  <form method="post" action="/settings/cms">
+    <label>발행 방식</label>
+    <select name="publisher">
+      <option value="html" {% if publisher=='html' %}selected{% endif %}>내보내기(HTML) — CMS 없이 미리보기만</option>
+      <option value="atpaju" {% if publisher=='atpaju' %}selected{% endif %}>atpaju (ND소프트 CMS)</option>
+    </select>
+    <div class="muted" style="font-size:12px;">ND소프트 기반 신문사 CMS를 쓰면 atpaju를 선택하세요.</div>
+
+    <div id="cms-fields" style="margin-top:10px;">
+      <label>사이트 주소</label>
+      <input type="text" name="ndsoft_base_url" value="{{ ndsoft_base_url }}" placeholder="https://www.atpaju.com">
+      <label>CMS 아이디</label>
+      <input type="text" name="cms_user" value="{{ cms_user }}" placeholder="CMS 로그인 아이디">
+      <label>CMS 비밀번호</label>
+      <input type="password" name="cms_password" placeholder="{% if has_cms_password %}변경 시에만 입력{% else %}CMS 로그인 비밀번호{% endif %}">
+      <label>기자 이메일 <span class="muted">(기사 등록 시 필요)</span></label>
+      <input type="text" name="cms_user_email" value="{{ cms_user_email }}" placeholder="reporter@paper.com">
+      <label>기본 섹션코드 <span class="muted">(예: S1N10)</span></label>
+      <input type="text" name="cms_section" value="{{ cms_section }}" placeholder="S1N10">
+
+      <label style="font-weight:normal; display:block; margin-top:12px;">
+        <input type="checkbox" name="cms_auto_submit" value="1" {% if cms_auto_submit %}checked{% endif %}>
+        저장 후 자동 승인요청 (작성중→승인요청; 끄면 작성중까지만)
+      </label>
+      <div class="muted" style="font-size:12px;">
+        켜면 발행 시 기사가 바로 승인요청 단계로 넘어가 CMS에서 수정 불가가 됩니다.</div>
+    </div>
+    <div class="row"><button type="submit">💾 CMS 설정 저장</button></div>
+  </form>
+  <p class="muted" style="margin-top:10px; font-size:12px;">
+    ※ CMS 연동이 어려우면 관리자에게 요청하세요 — 대신 설정해 드립니다.</p>
 </div>
 {% endblock %}
