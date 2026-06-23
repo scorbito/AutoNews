@@ -17,10 +17,10 @@
       <a href="/" class="brand"><span class="logo">📰</span> auto_news</a>
 
       <nav class="nav">
-        <a href="/" class="nav-item {% if p == '/' or p.startswith('/a/') %}active{% endif %}">
-          <span class="ico">📝</span> 기사</a>
         <a href="/inbox" class="nav-item {% if p.startswith('/inbox') or p.startswith('/messages') %}active{% endif %}">
           <span class="ico">📨</span> 수집함</a>
+        <a href="/" class="nav-item {% if p == '/' or p.startswith('/a/') %}active{% endif %}">
+          <span class="ico">📝</span> 기사</a>
         <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
           <span class="ico">🗞</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">

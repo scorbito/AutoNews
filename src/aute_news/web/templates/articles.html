@@ -2,8 +2,10 @@
 {% block title %}기사 목록{% endblock %}
 {% block body %}
 <div class="page-head">
-  <h2>기사 <span class="sub">{{ total }}건</span></h2>
-  <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+  <div class="row" style="gap:14px;">
+    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+    <h2 style="margin:0;">기사 <span class="sub">{{ total }}건</span></h2>
+  </div>
 </div>
 
 <div class="row" style="margin-bottom:18px;">
