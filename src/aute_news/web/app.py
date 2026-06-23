@@ -124,11 +124,13 @@ def signup_form(request: Request, error: str = ""):
 
 @app.post("/signup")
 def signup_post(request: Request, paper: str = Form(...), email: str = Form(...),
-                password: str = Form(...)):
+                password: str = Form(...), password2: str = Form(...)):
     """셀프 가입 — 신문사(tenant) + 사용자 생성 후 자동 로그인 → 메일 설정으로."""
     paper, email = paper.strip(), email.strip()
     if len(password) < 6:
         return RedirectResponse("/signup?error=pw", status_code=303)
+    if password != password2:
+        return RedirectResponse("/signup?error=mismatch", status_code=303)
     conn = db.connect()
     try:
         tid, uid = admin.create_account(conn, paper, email, password)
