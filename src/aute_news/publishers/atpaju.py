@@ -89,8 +89,9 @@ class AtpajuPublisher(Publisher):
     def _write(self, s: requests.Session, idxno: str, headline: str,
                subtitle: str, body_html: str, pub_date: str,
                section: str | None = None) -> requests.Response:
+        # n8n 워크플로 'Write Article' 36개 필드와 정확히 일치(빈 값 포함).
         data = {
-            "mode": "modify", "idxno": idxno,
+            "mode": "modify",
             "sectionCode": section or self.section, "subSectionCode": "",
             "title": headline, "subTitle": subtitle, "FCKeditor1": body_html,
             "pub_date": pub_date,
@@ -98,8 +99,11 @@ class AtpajuPublisher(Publisher):
             "article_source": "self", "onoff": "O", "view_level": "A",
             "view_recognition": "Y", "area": "D", "autoSave": "1", "uora": "U",
             "level": "B", "article_type": "B", "serial_number": "0", "page": "0",
-            "pdf": "N", "embargo": "N", "recognition": "I",
+            "pdf": "N", "embargo": "N", "idxno": idxno,
             "keyword": "", "shoulder_title": "", "portal_title": "",
+            "serialCode": "", "embargo_date": "", "embargo_time": "", "send_id": "",
+            "ad_sendid_check": "", "returnAIPage": "", "article_tag_use": "",
+            "recognition": "I",
         }
         return s.post(f"{self.base}/news/userArticleWrite.php", data=data,
                       headers={"Referer": f"{self.base}/news/userArticleWriteForm.html"},
@@ -152,6 +156,15 @@ class AtpajuPublisher(Publisher):
             for im in images or []:
                 self._upload_image(s, idxno, im["path"])
             url = f"{self.base}/news/articleView.html?idxno={idxno}"
+            # 등록 검증: 공개 페이지에서 실제로 보이는지 확인(거짓 성공 방지)
+            try:
+                chk = s.get(url, timeout=20)
+                if "존재하지 않는" in chk.text:
+                    return PublishResult(
+                        False, url=url,
+                        message="등록 직후 기사가 공개 페이지에 없음(비공개/승인대기 또는 필드 문제 가능)")
+            except requests.RequestException:
+                pass
             return PublishResult(True, url=url)
         except requests.RequestException as e:
             return PublishResult(False, message=f"발행 요청 실패: {e}")
