@@ -375,7 +375,9 @@ def settings_form(request: Request, mailerr: str = ""):
         {"auto_on": auto_on, "collect_times": cfg.get("collect_times") or "",
          "mail": mail, "folders": folders, "selected": selected,
          "folder_err": folder_err, "mailerr": mailerr,
-         "mail_enabled": bool(mail.get("collect_enabled"))})
+         "mail_enabled": bool(mail.get("collect_enabled")),
+         "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
+         "publisher": cfg.get("publisher") or "html"})
 
 
 @app.post("/settings/mail")
@@ -408,13 +410,15 @@ async def settings_folders(request: Request):
 
 
 @app.post("/settings")
-def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: str = Form("")):
+def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: str = Form(""),
+                  cms_auto_submit: str = Form("0")):
     on = auto_mode == "1"
     conn = db.connect()
     db.set_tenant_config(conn, _tenant(request),
                          collect_enabled=1 if on else 0,
                          pipeline_mode="auto" if on else "review",
-                         collect_times=collect_times.strip())
+                         collect_times=collect_times.strip(),
+                         cms_auto_submit=1 if cms_auto_submit == "1" else 0)
     conn.close()
     return RedirectResponse("/settings", status_code=303)
 

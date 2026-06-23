@@ -87,6 +87,16 @@
     <div class="muted" style="font-size:12px;">
       · 특정시각: <code>09:00,15:00</code> (KST, 쉼표 구분)<br>
       · 일정 간격: <code>30m</code>(30분마다) · <code>60m</code>(1시간마다)</div>
+
+    <label style="display:block; margin-top:12px;">CMS 발행</label>
+    <label style="font-weight:normal;">
+      <input type="checkbox" name="cms_auto_submit" value="1" {% if cms_auto_submit %}checked{% endif %}>
+      저장 후 자동 승인요청 (작성중→승인요청; 끄면 작성중까지만)
+    </label>
+    <div class="muted" style="font-size:12px;">
+      CMS(atpaju) 발행 시 적용. 켜면 기사가 바로 승인요청 단계로 넘어가 수정 불가가 됩니다.
+      {% if publisher != 'atpaju' %}(현재 발행기: {{ publisher }} — CMS 연동 시 적용){% endif %}</div>
+
     <div class="row"><button type="submit">💾 저장</button></div>
   </form>
   <p class="muted" style="margin-top:12px;">
