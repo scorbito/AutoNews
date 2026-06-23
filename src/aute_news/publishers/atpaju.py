@@ -97,7 +97,7 @@ class AtpajuPublisher(Publisher):
             "pub_date": pub_date,
             "user_id": self.uid, "user_name": self.user_name, "user_email": self.user_email,
             "article_source": "self", "onoff": "O", "view_level": "A",
-            "view_recognition": "Y", "area": "D", "autoSave": "1", "uora": "U",
+            "view_recognition": "Y", "area": "D", "autoSave": "0", "uora": "U",
             "level": "B", "article_type": "B", "serial_number": "0", "page": "0",
             "pdf": "N", "embargo": "N", "idxno": idxno,
             "keyword": "", "shoulder_title": "", "portal_title": "",
@@ -155,17 +155,12 @@ class AtpajuPublisher(Publisher):
             self._write(s, idxno, headline, subtitle, body_html, pub_date, section)
             for im in images or []:
                 self._upload_image(s, idxno, im["path"])
-            url = f"{self.base}/news/articleView.html?idxno={idxno}"
-            # 등록 검증: 공개 페이지에서 실제로 보이는지 확인(거짓 성공 방지)
-            try:
-                chk = s.get(url, timeout=20)
-                if "존재하지 않는" in chk.text:
-                    return PublishResult(
-                        False, url=url,
-                        message="등록 직후 기사가 공개 페이지에 없음(비공개/승인대기 또는 필드 문제 가능)")
-            except requests.RequestException:
-                pass
-            return PublishResult(True, url=url)
+            # ND소프트는 승인 흐름(작성중→승인요청→발행)이 있어 '작성중(초안)'으로 들어간다.
+            # 공개 페이지엔 아직 안 보이는 게 정상 — 기자가 CMS에서 검토·승인 후 발행.
+            edit_url = f"{self.base}/news/userArticleWriteForm.html?mode=modify&idxno={idxno}"
+            return PublishResult(
+                True, url=edit_url,
+                message="atpaju '작성중(초안)'으로 전송됨 — CMS에서 검토·승인하면 발행됩니다")
         except requests.RequestException as e:
             return PublishResult(False, message=f"발행 요청 실패: {e}")
         finally:
