@@ -63,8 +63,8 @@ def connect() -> _Conn:
 # --- 테넌트 설정(메일/CMS, 비밀번호 암호화) ---
 
 _CFG_COLS = ("imap_host", "imap_email", "imap_folders", "publisher", "ndsoft_base_url",
-             "cms_user", "cms_user_name", "cms_user_email", "cms_section", "pipeline_mode",
-             "collect_enabled", "collect_times")
+             "cms_user", "cms_user_name", "cms_user_email", "cms_section", "cms_auto_submit",
+             "pipeline_mode", "collect_enabled", "collect_times")
 
 
 def get_tenant_config(conn, tenant_id: int) -> dict | None:

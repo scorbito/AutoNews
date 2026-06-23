@@ -84,6 +84,8 @@ def list_tenants(conn) -> list[dict]:
             "has_mail": bool(cfg.get("imap_host") and cfg.get("imap_email")),
             "collect_enabled": cfg.get("collect_enabled"),
             "collect_times": cfg.get("collect_times"),
+            "cms_user_email": cfg.get("cms_user_email"),
+            "cms_auto_submit": cfg.get("cms_auto_submit"),
         })
     return out
 

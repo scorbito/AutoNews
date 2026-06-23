@@ -194,6 +194,7 @@ async def admin_config(request: Request, tid: int):
     kw = {k: v for k, v in form.items() if v not in (None, "")}
     if "collect_enabled" in kw:
         kw["collect_enabled"] = int(kw["collect_enabled"])  # INTEGER 컬럼
+    kw["cms_auto_submit"] = 1 if form.get("cms_auto_submit") == "1" else 0  # 체크박스(미체크=0)
     conn = db.connect()
     db.set_tenant_config(conn, tid, **kw)
     conn.close()

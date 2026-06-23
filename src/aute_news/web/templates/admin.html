@@ -84,7 +84,11 @@
         <label>사이트 주소</label><input type="text" name="ndsoft_base_url" placeholder="https://www.atpaju.com">
         <label>CMS 아이디</label><input type="text" name="cms_user" placeholder="evahoba">
         <label>CMS 비밀번호</label><input type="password" name="cms_password" placeholder="변경 시에만 입력">
+        <label>CMS 기자 이메일</label><input type="text" name="cms_user_email" value="{{ t.cms_user_email or '' }}" placeholder="atpaju@daum.net">
         <label>기본 섹션코드</label><input type="text" name="cms_section" placeholder="S1N10">
+        <label style="font-weight:normal; display:block; margin-top:8px;">
+          <input type="checkbox" name="cms_auto_submit" value="1" {% if t.cms_auto_submit %}checked{% endif %}>
+          저장 후 자동 승인요청 (작성중→승인요청; 끄면 작성중까지만)</label>
         <label>발행 모드</label>
         <select name="pipeline_mode">
           <option value="review" {% if t.pipeline_mode=='review' %}selected{% endif %}>review (기자 검토)</option>
