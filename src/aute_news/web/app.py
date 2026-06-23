@@ -136,6 +136,8 @@ def signup_post(request: Request, paper: str = Form(...), email: str = Form(...)
         tid, uid = admin.create_account(conn, paper, email, password)
     except Exception as e:  # noqa: BLE001 (이메일 중복 등)
         conn.close()
+        import sys
+        print(f"[signup] 가입 실패: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         detail = "exists" if "registered" in str(e).lower() or "exists" in str(e).lower() else "fail"
         return RedirectResponse(f"/signup?error={detail}", status_code=303)
     conn.close()
