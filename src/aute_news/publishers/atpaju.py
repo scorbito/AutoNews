@@ -71,6 +71,9 @@ class AtpajuPublisher(Publisher):
         self.user_name = c.get("cms_user_name") or os.getenv("ATPAJU_USER_NAME", "작업자")
         self.user_email = c.get("cms_user_email") or os.getenv("ATPAJU_USER_EMAIL", "")
         self.section = c.get("cms_section") or os.getenv("ATPAJU_SECTION", "S1N10")
+        # 저장 후 '승인요청'(작성중→승인요청)까지 자동으로 보낼지. 기본 OFF(기자 검토 후 직접).
+        self.auto_submit = (bool(c.get("cms_auto_submit"))
+                            or os.getenv("ATPAJU_AUTO_SUBMIT", "") in ("1", "true", "True"))
         # 실제 게시 스위치는 전역(.env)으로 유지 + HARD_DISABLE_LIVE 안전잠금
         self.live = os.getenv("ATPAJU_LIVE", "") in ("1", "true", "True")
 
@@ -142,6 +145,14 @@ class AtpajuPublisher(Publisher):
             },
             timeout=30)
 
+    def _request_approval(self, s: requests.Session, idxno: str) -> bool:
+        """작성중 → 승인요청 (recognition=C). 성공 추정 시 True."""
+        r = s.get(f"{self.base}/news/userArticleRecognition.php",
+                  params={"idxno": idxno, "recognition": "C"},
+                  headers={"Referer": f"{self.base}/news/articleView.html?idxno={idxno}"},
+                  timeout=20)
+        return r.status_code == 200 and "오류" not in r.text and "권한" not in r.text
+
     def _upload_image(self, s: requests.Session, idxno: str, path: str) -> None:
         from ..storage import get_storage
         data = get_storage().get(path)
@@ -202,6 +213,13 @@ class AtpajuPublisher(Publisher):
                                  f"최종URL={wr.url} | 본문: {snippet}"))
             except requests.RequestException:
                 pass
+            # 옵션: 저장 후 승인요청(작성중→승인요청)까지 자동
+            if self.auto_submit:
+                ok = self._request_approval(s, idxno)
+                return PublishResult(
+                    True, url=edit_url,
+                    message=("atpaju 저장 + 승인요청 완료(편집자 승인 시 발행)" if ok
+                             else "atpaju 저장 완료, 단 승인요청 실패 — CMS에서 직접 승인요청"))
             return PublishResult(
                 True, url=edit_url,
                 message="atpaju '작성중(초안)' 저장 완료 — CMS에서 검토·승인하면 발행됩니다")
