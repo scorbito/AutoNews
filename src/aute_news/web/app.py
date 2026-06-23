@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Form, Request
+from fastapi import BackgroundTasks, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +27,24 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 app = FastAPI(title="aute_news 기자 검토")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+
+
+def _nav_counts(request: Request) -> dict:
+    """사이드바 메뉴 옆 개수(수집함=메일 수, 기사=기사 수). 비로그인/실패 시 빈 dict."""
+    tid = request.session.get("tenant_id")
+    if not tid:
+        return {}
+    try:
+        conn = db.connect()
+        msgs = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=?", (tid,)).fetchone()["c"]
+        arts = conn.execute("SELECT COUNT(*) c FROM articles WHERE tenant_id=?", (tid,)).fetchone()["c"]
+        conn.close()
+        return {"messages": msgs, "articles": arts}
+    except Exception:  # noqa: BLE001 (개수 표시는 부가기능 — 실패해도 화면은 떠야 함)
+        return {}
+
+
+templates.env.globals["nav_counts"] = _nav_counts
 
 STATUS_LABEL = {None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨"}
 ASTATUS = {None: "-", "split": "분할됨", "drafted": "초안",
@@ -328,61 +346,106 @@ def message_detail(request: Request, message_id: int):
         request, "message_detail.html", {"m": msg, "atts": atts, "art_count": art_count})
 
 
-@app.post("/messages/bulk-process")
-def messages_bulk_process(request: Request, ids: Annotated[list[int], Form()] = []):
-    """선택한 메일들을 한 번에 기사 생성(처리). review 모드."""
-    from ..pipeline import process_message
-    t = _tenant(request)
-    conn = db.connect()
-    done = made = 0
-    for mid in ids:
-        try:
-            res = process_message(conn, mid, mode="review", tenant_id=t)
-            done += 1
-            made += len(res.get("articles", []))
-        except Exception:  # noqa: BLE001
-            pass
-    conn.close()
-    return RedirectResponse(
-        f"/inbox?msg=일괄 처리 — 메일 {done}건 → 기사 {made}건 생성", status_code=303)
-
-
-@app.post("/messages/{message_id}/process")
-def message_process(request: Request, message_id: int):
-    """메일 1건을 처리(트리아지→분할→사진매칭→기사 생성). review 모드."""
-    from ..pipeline import process_message
-    t = _tenant(request)
+# ── 백그라운드 작업 (메일 수집 / 기사 생성) ───────────
+def _run_collect(user_id: str, job_id: int) -> None:
+    from ..collector import collect_for_user
     conn = db.connect()
     try:
-        res = process_message(conn, message_id, mode="review", tenant_id=t)
-        if res.get("skipped"):
-            m = f"메일 {message_id}: 건너뜀({res.get('pipeline')}/{res.get('skipped')})"
+        stats = collect_for_user(user_id)
+        if stats.get("skipped"):
+            msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
+        elif stats.get("baselined") and not stats.get("new_messages"):
+            msg = "메일함 기준선을 '오늘 0시'로 설정했습니다 — 이후 도착 메일부터 수집됩니다. (오늘 새 메일 없음)"
         else:
-            m = f"메일 {message_id} 처리완료 — {res.get('pipeline')} · 기사 {len(res.get('articles', []))}건"
+            msg = f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, 첨부 {stats.get('attachments', 0)}개"
+        db.update_job(conn, job_id, status="done", message=msg)
     except Exception as e:  # noqa: BLE001
-        m = f"메일 {message_id} 처리 실패: {type(e).__name__}: {str(e)[:120]}"
+        db.update_job(conn, job_id, status="error", message=f"수집 실패: {type(e).__name__}")
     finally:
         conn.close()
-    return RedirectResponse(f"/inbox?msg={m}", status_code=303)
+
+
+def _run_process(ids: list[int], tenant_id: int, job_id: int) -> None:
+    from ..pipeline import process_message
+    conn = db.connect()
+    made = done = 0
+    try:
+        for mid in ids:
+            try:
+                res = process_message(conn, mid, mode="review", tenant_id=tenant_id)
+                made += len(res.get("articles", []))
+            except Exception:  # noqa: BLE001 (개별 메일 실패는 건너뜀)
+                pass
+            done += 1
+            db.update_job(conn, job_id, done=done,
+                          message=f"기사 생성 {done}/{len(ids)} … 누적 {made}건")
+        db.update_job(conn, job_id, status="done",
+                      message=f"완료 — 메일 {done}건 처리 · 기사 {made}건 생성")
+    except Exception as e:  # noqa: BLE001
+        db.update_job(conn, job_id, status="error", message=f"처리 실패: {type(e).__name__}")
+    finally:
+        conn.close()
+
+
+def _start_job(request: Request, kind: str, total: int, message: str):
+    """진행 중 작업이 있으면 막고, 없으면 job 생성. (job_id, busy) 반환."""
+    t = _tenant(request)
+    conn = db.connect()
+    if db.active_job(conn, t):
+        conn.close()
+        return None, True
+    job_id = db.create_job(conn, t, request.session.get("user_id"), kind, total=total, message=message)
+    conn.close()
+    return job_id, False
 
 
 @app.post("/collect")
-def collect_now(request: Request):
-    """기자가 본인 메일함(개인 계정)을 지금 수집."""
-    from ..collector import collect_for_user
-    try:
-        stats = collect_for_user(request.session["user_id"])
-    except Exception as e:  # noqa: BLE001 (메일 로그인 실패 등)
-        return RedirectResponse(f"/inbox?msg=수집 실패: {type(e).__name__}", status_code=303)
-    if stats.get("skipped"):
-        msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
-    elif stats.get("baselined") and not stats.get("new_messages"):
-        msg = ("새로 지정한 메일함은 '오늘 0시' 기준으로 설정됐습니다 — "
-               "오늘 0시 이후 도착한 메일부터 수집됩니다. (오늘 새 메일 없음)")
-    else:
-        msg = (f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, "
-               f"첨부 {stats.get('attachments', 0)}개")
-    return RedirectResponse(f"/inbox?msg={msg}", status_code=303)
+def collect_now(request: Request, background: BackgroundTasks):
+    """기자 본인 메일함 수집 — 백그라운드 실행, 즉시 응답."""
+    job_id, busy = _start_job(request, "collect", 0, "메일 수집 중…")
+    if busy:
+        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
+    background.add_task(_run_collect, request.session["user_id"], job_id)
+    return RedirectResponse("/inbox", status_code=303)
+
+
+@app.post("/messages/bulk-process")
+def messages_bulk_process(request: Request, background: BackgroundTasks,
+                          ids: Annotated[list[int], Form()] = []):
+    """선택한 메일들을 백그라운드로 일괄 기사 생성."""
+    if not ids:
+        return RedirectResponse("/inbox", status_code=303)
+    job_id, busy = _start_job(request, "process", len(ids), "기사 생성 준비 중…")
+    if busy:
+        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
+    background.add_task(_run_process, list(ids), _tenant(request), job_id)
+    return RedirectResponse("/inbox", status_code=303)
+
+
+@app.post("/messages/{message_id}/process")
+def message_process(request: Request, message_id: int, background: BackgroundTasks):
+    """메일 1건을 백그라운드로 처리."""
+    job_id, busy = _start_job(request, "process", 1, "기사 생성 중…")
+    if busy:
+        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
+    background.add_task(_run_process, [message_id], _tenant(request), job_id)
+    return RedirectResponse("/inbox", status_code=303)
+
+
+@app.get("/jobs/active")
+def jobs_active(request: Request):
+    """진행상태 폴링용 JSON. 멈춘(stale) running 은 오류로 보고."""
+    t = _tenant(request)
+    conn = db.connect()
+    j = db.latest_job(conn, t)
+    conn.close()
+    if not j:
+        return {"status": "none"}
+    if j["status"] == "running" and j["stale"]:
+        return {"status": "error", "message": "작업이 응답하지 않습니다(시간 초과).",
+                "total": j["total"], "done": j["done"]}
+    return {"status": j["status"], "kind": j["kind"], "total": j["total"],
+            "done": j["done"], "message": j["message"]}
 
 
 @app.get("/settings", response_class=HTMLResponse)

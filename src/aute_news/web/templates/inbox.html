@@ -3,6 +3,12 @@
 {% block body %}
 <h2 style="text-align:center; margin:0 0 16px;">수집함 <span class="sub">{{ msgs|length }}건</span></h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
+
+<div id="jobBanner" class="job-banner" style="display:none;">
+  <span class="spinner"></span>
+  <span id="jobMsg">처리 중…</span>
+  <div id="jobBar" class="job-bar" style="display:none;"><div id="jobFill" class="job-fill"></div></div>
+</div>
 <div class="row" style="gap:14px;">
   <form method="post" action="/collect">
     <button type="submit" style="padding:11px 22px; font-size:15px;">📥 메일 수집</button>
@@ -67,5 +73,32 @@
     boxes().forEach(b => b.checked = e.target.checked); count();
   });
   document.addEventListener('change', e => { if (e.target.classList.contains('sel')) count(); });
+
+  // ── 백그라운드 작업 진행상태 폴링 ──
+  let wasRunning = false;
+  async function pollJob() {
+    const b = document.getElementById('jobBanner');
+    const msg = document.getElementById('jobMsg');
+    const bar = document.getElementById('jobBar');
+    const fill = document.getElementById('jobFill');
+    try {
+      const j = await (await fetch('/jobs/active', {cache: 'no-store'})).json();
+      if (j.status === 'running') {
+        wasRunning = true;
+        b.className = 'job-banner running'; b.style.display = 'flex';
+        msg.textContent = j.message || '처리 중…';
+        if (j.total > 0) { bar.style.display = 'block'; fill.style.width = Math.round(j.done / j.total * 100) + '%'; }
+        else { bar.style.display = 'none'; }
+        setTimeout(pollJob, 1500);
+      } else if (wasRunning && (j.status === 'done' || j.status === 'error')) {
+        b.className = 'job-banner ' + j.status;
+        b.querySelector('.spinner') && b.querySelector('.spinner').remove();
+        msg.textContent = j.message || (j.status === 'done' ? '완료' : '오류');
+        bar.style.display = 'none';
+        setTimeout(() => location.reload(), 1500);
+      }
+    } catch (e) { setTimeout(pollJob, 3000); }
+  }
+  pollJob();
 </script>
 {% endblock %}

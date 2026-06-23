@@ -289,6 +289,47 @@ def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> 
         (attachment_id, tenant_id)).fetchall()
 
 
+# --- 백그라운드 작업(jobs) ---
+def create_job(conn, tenant_id: int, user_id: str | None, kind: str,
+               total: int = 0, message: str = "") -> int:
+    row = conn.execute(
+        "INSERT INTO jobs (tenant_id, user_id, kind, status, total, done, message) "
+        "VALUES (?,?,?,'running',?,0,?) RETURNING id",
+        (tenant_id, user_id, kind, total, message)).fetchone()
+    conn.commit()
+    return row["id"]
+
+
+def update_job(conn, job_id: int, *, done: int | None = None, total: int | None = None,
+               message: str | None = None, status: str | None = None) -> None:
+    sets, params = [], []
+    for col, val in (("done", done), ("total", total), ("message", message), ("status", status)):
+        if val is not None:
+            sets.append(f"{col}=?")
+            params.append(val)
+    if not sets:
+        return
+    sets.append("updated_at=now()")
+    params.append(job_id)
+    conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id=?", params)
+    conn.commit()
+
+
+def active_job(conn, tenant_id: int):
+    """진행 중(running)이고 15분 내 갱신된 작업 — 중복 실행 방지/배너용. 없으면 None."""
+    return conn.execute(
+        "SELECT * FROM jobs WHERE tenant_id=? AND status='running' "
+        "AND updated_at > now() - interval '15 minutes' ORDER BY id DESC LIMIT 1",
+        (tenant_id,)).fetchone()
+
+
+def latest_job(conn, tenant_id: int):
+    """가장 최근 작업 1건(상태 무관) + 멈춤(stale) 여부. 폴링 응답용."""
+    return conn.execute(
+        "SELECT *, (status='running' AND updated_at < now() - interval '15 minutes') AS stale "
+        "FROM jobs WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tenant_id,)).fetchone()
+
+
 def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> list:
     """수집된 메일 목록 + 요약(첨부 종류·이미지·기사 수·트리아지)."""
     return conn.execute(

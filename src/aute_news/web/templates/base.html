@@ -12,15 +12,18 @@
 </head>
 <body>
   {% set p = request.url.path %}
+  {% set nc = nav_counts(request) %}
   <div class="app">
     <aside class="sidebar">
       <a href="/inbox" class="brand"><span class="logo">📰</span> auto_news</a>
 
       <nav class="nav">
         <a href="/inbox" class="nav-item {% if p.startswith('/inbox') or p.startswith('/messages') %}active{% endif %}">
-          <span class="ico">📨</span> 수집함</a>
+          <span class="ico">📨</span> 수집함
+          {% if nc.messages is defined %}<span class="nav-count">{{ nc.messages }}</span>{% endif %}</a>
         <a href="/" class="nav-item {% if p == '/' or p.startswith('/a/') %}active{% endif %}">
-          <span class="ico">📝</span> 기사</a>
+          <span class="ico">📝</span> 기사
+          {% if nc.articles is defined %}<span class="nav-count">{{ nc.articles }}</span>{% endif %}</a>
         <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
           <span class="ico">🗞</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">
