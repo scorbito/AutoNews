@@ -19,12 +19,15 @@ n8n 워크플로에서 확인된 실제 요청을 그대로 재현한다:
 """
 from __future__ import annotations
 
+import datetime
 import mimetypes
 import os
 import re
 from pathlib import Path
 
 import requests
+
+_KST = datetime.timezone(datetime.timedelta(hours=9))
 
 from .base import Publisher, PublishResult
 from .export_html import _content_to_html
@@ -106,10 +109,12 @@ class AtpajuPublisher(Publisher):
             return vm.group(1) if vm else ""
 
         # 로그인 사용자 정보·날짜는 폼 기본값을 그대로 사용(빈 이메일 등 검증 실패 방지)
+        # 등록 시각은 embargo_date/time 으로 표시됨 → 비어 있으면 현재 KST 시각 사용(00:00 방지)
+        now = datetime.datetime.now(_KST)
         uname = _fv("user_name") or self.user_name
         uemail = _fv("user_email") or self.user_email
-        edate = _fv("embargo_date") or pub_date
-        etime = _fv("embargo_time") or "00:00"
+        edate = _fv("embargo_date") or now.strftime("%Y-%m-%d")
+        etime = _fv("embargo_time") or now.strftime("%H:%M")
         data = {
             "uora": "U", "article_tag_use": "", "mode": "modify", "idxno": idxno,
             "area": "D", "view_level": "A", "view_recognition": "Y", "embargo": "N",
