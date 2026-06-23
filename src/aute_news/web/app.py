@@ -262,6 +262,36 @@ def articles_bulk(request: Request, action: str = Form(...),
     return RedirectResponse("/", status_code=303)
 
 
+@app.get("/inbox", response_class=HTMLResponse)
+def inbox(request: Request, msg: str = ""):
+    """수집함 — 수집된 메일을 하나씩 골라 기사 생성(처리)."""
+    t = _tenant(request)
+    conn = db.connect()
+    msgs = db.list_messages(conn, tenant_id=t)
+    conn.close()
+    return templates.TemplateResponse(
+        request, "inbox.html", {"msgs": msgs, "msg": msg})
+
+
+@app.post("/messages/{message_id}/process")
+def message_process(request: Request, message_id: int):
+    """메일 1건을 처리(트리아지→분할→사진매칭→기사 생성). review 모드."""
+    from ..pipeline import process_message
+    t = _tenant(request)
+    conn = db.connect()
+    try:
+        res = process_message(conn, message_id, mode="review", tenant_id=t)
+        if res.get("skipped"):
+            m = f"메일 {message_id}: 건너뜀({res.get('pipeline')}/{res.get('skipped')})"
+        else:
+            m = f"메일 {message_id} 처리완료 — {res.get('pipeline')} · 기사 {len(res.get('articles', []))}건"
+    except Exception as e:  # noqa: BLE001
+        m = f"메일 {message_id} 처리 실패: {type(e).__name__}: {str(e)[:120]}"
+    finally:
+        conn.close()
+    return RedirectResponse(f"/inbox?msg={m}", status_code=303)
+
+
 @app.post("/collect")
 def collect_now(request: Request):
     """기자가 본인 메일함(개인 계정)을 지금 수집."""

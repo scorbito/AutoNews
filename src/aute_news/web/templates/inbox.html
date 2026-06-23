@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}수집함{% endblock %}
+{% block body %}
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <h2 style="margin:0;">수집함 <span class="muted">({{ msgs|length }}건)</span></h2>
+  <div class="row">
+    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+    <a href="/" style="font-size:13px;">기사 목록 →</a>
+  </div>
+</div>
+{% if msg %}<p class="block">{{ msg }}</p>{% endif %}
+<p class="muted" style="margin-top:4px;">메일을 하나씩 골라 <b>기사 생성</b>으로 처리합니다. (분할·사진매칭·생성 / 기사 많으면 시간이 걸려요)</p>
+
+<table>
+  <thead><tr>
+    <th style="width:40px;">#</th><th>제목</th><th style="width:130px;">첨부</th>
+    <th style="width:90px;">트리아지</th><th style="width:80px;">기사</th><th style="width:110px;"></th>
+  </tr></thead>
+  <tbody>
+  {% for m in msgs %}
+    <tr>
+      <td class="muted">{{ m.id }}</td>
+      <td>
+        <div>{{ m.subject or '(제목 없음)' }}</div>
+        <div class="muted" style="font-size:12px;">{{ m.sender }} · {{ m.date }}</div>
+      </td>
+      <td class="muted" style="font-size:12px;">
+        {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
+        {% if m.img_count %}<br>📷 {{ m.img_count }}{% endif %}
+      </td>
+      <td>{% if m.pipeline %}<span class="tag s-draft">{{ m.pipeline }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td>
+        {% if m.art_count %}<a href="/?status=all">기사 {{ m.art_count }}건</a>{% else %}<span class="muted">0</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="/messages/{{ m.id }}/process"
+              onsubmit="this.querySelector('button').textContent='처리중…'; this.querySelector('button').disabled=true;">
+          <button type="submit" class="{% if m.art_count %}gray{% endif %}">
+            {% if m.art_count %}↻ 재생성{% else %}⚡ 기사 생성{% endif %}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if not msgs %}<p class="muted">수집된 메일이 없습니다. "📥 메일 수집"으로 가져오세요.</p>{% endif %}
+{% endblock %}

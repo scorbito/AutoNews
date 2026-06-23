@@ -289,6 +289,21 @@ def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> 
         (attachment_id, tenant_id)).fetchall()
 
 
+def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> list:
+    """수집된 메일 목록 + 요약(첨부 종류·이미지·기사 수·트리아지)."""
+    return conn.execute(
+        """SELECT m.id, m.subject, m.sender, m.date, m.pipeline, m.account, m.folder,
+                  (SELECT COUNT(*) FROM attachments a WHERE a.message_pk=m.id) att_count,
+                  (SELECT string_agg(DISTINCT a.format, ',') FROM attachments a
+                     WHERE a.message_pk=m.id) att_formats,
+                  (SELECT COUNT(*) FROM images i JOIN attachments a ON a.id=i.attachment_id
+                     WHERE a.message_pk=m.id AND i.selected=1) img_count,
+                  (SELECT COUNT(*) FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
+                     WHERE a.message_pk=m.id) art_count
+           FROM messages m WHERE m.tenant_id=? ORDER BY m.id DESC LIMIT ?""",
+        (tenant_id, limit)).fetchall()
+
+
 def list_message_images(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:
     """한 메일(메시지)의 모든 첨부에 걸친 이미지 — zip 번들 + 문서 임베드 통합."""
     return conn.execute(
