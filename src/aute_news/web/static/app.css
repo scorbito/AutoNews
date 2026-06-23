@@ -118,6 +118,8 @@ button.gray, .btn.gray { background: var(--gray-600); }
 button.gray:hover { background: var(--gray-700); }
 button.green, .btn.green { background: var(--green-fg); }
 button.green:hover { filter: brightness(.93); }
+button.publish, .btn.publish { background: #e3741c; }
+button.publish:hover, .btn.publish:hover { background: #c8610f; }
 button.danger, .btn.danger { background: var(--red-fg); }
 button.ghost, .btn.ghost {
   background: transparent; color: var(--gray-600); border-color: transparent; padding: 7px 10px;
