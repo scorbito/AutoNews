@@ -11,6 +11,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -25,6 +26,7 @@ BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 app = FastAPI(title="aute_news 기자 검토")
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 STATUS_LABEL = {None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨"}
 ASTATUS = {None: "-", "split": "분할됨", "drafted": "초안",

@@ -1,28 +1,21 @@
 {% extends "base.html" %}
 {% block title %}기사 목록{% endblock %}
 {% block body %}
-<div class="row" style="justify-content:space-between; align-items:center;">
-  <h2 style="margin:0;">기사 <span class="muted">({{ total }}건)</span></h2>
-  <div class="row">
-    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
-    <a href="/inbox" style="font-size:13px;">📨 수집함(처리)</a>
-    <a href="/board" style="font-size:13px;">🗞 발행 게시판</a>
-    <a href="/settings" style="font-size:13px;">⚙ 내 설정</a>
-  </div>
+<div class="page-head">
+  <h2>기사 <span class="sub">{{ total }}건</span></h2>
+  <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
 </div>
 
-<div class="row" style="margin-bottom:14px;">
+<div class="row" style="margin-bottom:18px;">
   {% for key, name in filters %}
-    <a href="/?status={{ key }}"
-       class="tag {% if active == key %}s-published{% else %}s-pending{% endif %}"
-       style="text-decoration:none; padding:6px 12px;">
-      {{ name }} {{ counts.get(key if key!='all' else 'all', 0) }}
+    <a href="/?status={{ key }}" class="chip {% if active == key %}active{% endif %}">
+      {{ name }} <span class="n">{{ counts.get(key if key!='all' else 'all', 0) }}</span>
     </a>
   {% endfor %}
 </div>
 
 <form method="post" action="/articles/bulk">
-  <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
+  <div class="row" style="position:sticky; top:0; background:var(--bg); padding:10px 0; z-index:5;">
     <label style="font-weight:normal;"><input type="checkbox" id="checkall"> 전체</label>
     <span class="muted">선택 일괄:</span>
     <button class="gray" type="submit" name="action" value="review">✓ 검토완료</button>
@@ -61,7 +54,9 @@
   </div>
   {% endfor %}
 </form>
-{% if not groups %}<p class="muted">아직 기사가 없습니다. 상단 "📥 메일 수집"으로 시작하세요.</p>{% endif %}
+{% if not groups %}
+<div class="empty">아직 기사가 없습니다.<br>오른쪽 위 <b>📥 메일 수집</b>으로 시작하세요.</div>
+{% endif %}
 
 <script>
   const boxes = () => Array.from(document.querySelectorAll('.sel'));

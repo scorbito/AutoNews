@@ -3,50 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}aute_news{% endblock %}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, "Malgun Gothic", sans-serif; margin: 0;
-           background: #f5f6f8; color: #222; }
-    header { background: #1a73e8; color: #fff; padding: 14px 24px; font-size: 18px; font-weight: 700; }
-    header a { color: #fff; text-decoration: none; }
-    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-    th { background: #fafafa; color: #666; }
-    tr:hover td { background: #f9fbff; }
-    a { color: #1a73e8; }
-    .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
-    .s-done, .s-reviewed { background: #e6f4ea; color: #137333; }
-    .s-manual, .s-pending { background: #fce8e6; color: #c5221f; }
-    .s-draft { background: #fef7e0; color: #b06000; }
-    .s-published { background: #e8f0fe; color: #1a73e8; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .card { background: #fff; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    .card h3 { margin-top: 0; color: #666; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
-    pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.6; font-size: 14px; }
-    input[type=text], textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px;
-            font-family: inherit; font-size: 14px; }
-    textarea { min-height: 420px; line-height: 1.6; resize: vertical; }
-    button { background: #1a73e8; color: #fff; border: 0; padding: 9px 16px; border-radius: 6px;
-             font-size: 14px; cursor: pointer; }
-    button.gray { background: #5f6368; }
-    button.green { background: #137333; }
-    .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
-    .muted { color: #888; font-size: 13px; }
-    label { font-size: 13px; color: #666; display: block; margin: 12px 0 4px; }
-  </style>
+  <title>{% block title %}auto_news{% endblock %}</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  {% block head %}{% endblock %}
 </head>
 <body>
-  <header style="display:flex; justify-content:space-between; align-items:center;">
-    <a href="/">📰 aute_news — 기자 검토</a>
-    <span style="font-size:13px; font-weight:400;">
-      {% if request.session.get('is_admin') %}<a href="/admin" style="margin-right:12px;">관리자</a>{% endif %}
-      {{ request.session.get('email','') }}
-      <a href="/logout" style="margin-left:12px;">로그아웃</a>
-    </span>
-  </header>
-  <div class="wrap">{% block body %}{% endblock %}</div>
+  {% set p = request.url.path %}
+  <div class="app">
+    <aside class="sidebar">
+      <a href="/" class="brand"><span class="logo">📰</span> auto_news</a>
+
+      <nav class="nav">
+        <a href="/" class="nav-item {% if p == '/' or p.startswith('/a/') %}active{% endif %}">
+          <span class="ico">📝</span> 기사</a>
+        <a href="/inbox" class="nav-item {% if p.startswith('/inbox') or p.startswith('/messages') %}active{% endif %}">
+          <span class="ico">📨</span> 수집함</a>
+        <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
+          <span class="ico">🗞</span> 발행 게시판</a>
+        <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">
+          <span class="ico">⚙</span> 내 설정</a>
+        {% if request.session.get('is_admin') %}
+        <div class="nav-label">운영</div>
+        <a href="/admin" class="nav-item {% if p.startswith('/admin') %}active{% endif %}">
+          <span class="ico">🛠</span> 관리자</a>
+        {% endif %}
+      </nav>
+
+      <div class="spacer"></div>
+
+      <div class="userbox">
+        {% set em = request.session.get('email','') %}
+        <div class="avatar">{{ (em[:1] or '?')|upper }}</div>
+        <div class="who">
+          <b title="{{ em }}">{{ em or '게스트' }}</b>
+          <a href="/logout">로그아웃</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">{% block body %}{% endblock %}</main>
+  </div>
 </body>
 </html>

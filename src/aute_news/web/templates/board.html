@@ -1,28 +1,62 @@
 {% extends "base.html" %}
 {% block title %}{{ paper }} — 발행 게시판{% endblock %}
+{% block head %}
+<style>
+  .paper-masthead {
+    text-align: center; border-top: 3px solid #111; border-bottom: 1px solid #111;
+    padding: 18px 0 14px; margin-bottom: 28px;
+  }
+  .paper-masthead .name {
+    font-family: var(--font-serif); font-size: 38px; font-weight: 800; letter-spacing: -1px; color: #111;
+  }
+  .paper-masthead .tagline { color: var(--muted); font-size: 13px; margin-top: 4px; letter-spacing: 2px; }
+  .lead { border-bottom: 1px solid var(--gray-200); padding-bottom: 22px; margin-bottom: 22px; }
+  .lead .cat, .pcard .cat { color: #c0392b; font-weight: 700; font-size: 12px; letter-spacing: .5px; }
+  .lead h1 {
+    font-family: var(--font-serif); font-size: 32px; line-height: 1.25; margin: 8px 0 8px;
+  }
+  .lead h1 a, .pcard h3 a { color: #111; }
+  .lead h1 a:hover, .pcard h3 a:hover { text-decoration: none; color: var(--brand-700); }
+  .lead .sub { color: var(--gray-600); font-size: 17px; }
+  .pgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px 28px; }
+  .pcard { border-bottom: 1px solid var(--gray-200); padding-bottom: 16px; }
+  .pcard h3 { font-family: var(--font-serif); font-size: 19px; line-height: 1.35; margin: 6px 0 5px; }
+  .pcard .sub { color: var(--muted); font-size: 14px; }
+  .pcard .when { color: var(--gray-400); font-size: 12px; margin-top: 6px; }
+  @media (max-width: 720px){ .pgrid { grid-template-columns: 1fr; } .paper-masthead .name{ font-size:30px; } }
+</style>
+{% endblock %}
 {% block body %}
-<div class="row" style="justify-content:space-between; align-items:center;">
-  <h2 style="margin:0;">🗞 {{ paper }} <span class="muted">발행 미리보기</span></h2>
-  <a href="/" style="font-size:13px;">← 기사 목록</a>
+<div class="page-head" style="margin-bottom:8px;">
+  <span class="muted">발행 미리보기 — 실제 게시된 모습</span>
 </div>
-<p class="muted" style="margin-top:4px;">실제 게시된 모습 미리보기입니다. (테스트/데모용)</p>
+
+<div class="paper-masthead">
+  <div class="name">{{ paper }}</div>
+  <div class="tagline">A U T O N E W S　P R E S S</div>
+</div>
 
 {% if not arts %}
-  <p class="muted" style="margin-top:24px;">아직 발행된 기사가 없습니다. 기사 상세에서 <strong>발행</strong>하면 여기에 나타납니다.</p>
-{% endif %}
+  <div class="empty">아직 발행된 기사가 없습니다.<br>기사 상세에서 <b>발행</b>하면 여기에 신문처럼 나타납니다.</div>
+{% else %}
+  {% set lead = arts[0] %}
+  <div class="lead">
+    {% if lead.category_code %}<div class="cat">{{ cats.get(lead.category_code, lead.category_code) }}</div>{% endif %}
+    <h1><a href="/board/{{ lead.id }}">{{ lead.headline or lead.title or '(제목 없음)' }}</a></h1>
+    {% if lead.subtitle %}<div class="sub">{{ lead.subtitle }}</div>{% endif %}
+    <div class="when muted" style="margin-top:8px; font-size:12px;">
+      {% if lead.published_at %}{{ lead.published_at }}{% endif %}</div>
+  </div>
 
-<div style="margin-top:18px;">
-  {% for a in arts %}
-  <article class="card" style="margin-bottom:14px;">
-    <div class="muted" style="font-size:12px;">
-      {{ cats.get(a.category_code, a.category_code or '') }}
-      {% if a.published_at %} · {{ a.published_at }}{% endif %}
-    </div>
-    <h3 style="margin:6px 0 4px;">
-      <a href="/board/{{ a.id }}" style="text-decoration:none; color:#111;">{{ a.headline or a.title or '(제목 없음)' }}</a>
-    </h3>
-    {% if a.subtitle %}<div class="muted">{{ a.subtitle }}</div>{% endif %}
-  </article>
-  {% endfor %}
-</div>
+  <div class="pgrid">
+    {% for a in arts[1:] %}
+    <article class="pcard">
+      {% if a.category_code %}<div class="cat">{{ cats.get(a.category_code, a.category_code) }}</div>{% endif %}
+      <h3><a href="/board/{{ a.id }}">{{ a.headline or a.title or '(제목 없음)' }}</a></h3>
+      {% if a.subtitle %}<div class="sub">{{ a.subtitle }}</div>{% endif %}
+      {% if a.published_at %}<div class="when">{{ a.published_at }}</div>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+{% endif %}
 {% endblock %}
