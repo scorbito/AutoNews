@@ -89,25 +89,36 @@ class AtpajuPublisher(Publisher):
     def _write(self, s: requests.Session, idxno: str, headline: str,
                subtitle: str, body_html: str, pub_date: str,
                section: str | None = None) -> requests.Response:
-        # n8n 워크플로 'Write Article' 36개 필드와 정확히 일치(빈 값 포함).
-        data = {
-            "mode": "modify",
-            "sectionCode": section or self.section, "subSectionCode": "",
+        """실제 작성 폼(newsWriteForm)을 읽어 hidden 기본값을 그대로 가져온 뒤,
+        제목·본문만 덮어써서 전송한다(브라우저 저장과 동일한 필드 세트 보장).
+
+        핵심: autoSave는 폼의 빈 값('')을 그대로 써야 '실제 저장'으로 처리된다.
+        """
+        form_url = f"{self.base}/news/userArticleWriteForm.html?mode=modify&idxno={idxno}"
+        fr = s.get(form_url, timeout=20)
+        fm = re.search(r'<form[^>]*id=["\']newsWriteForm["\'][^>]*>(.*?)</form>',
+                       fr.text, re.S | re.I)
+        form_html = fm.group(1) if fm else ""
+        data: dict[str, str] = {}
+        for tag in re.findall(r'<input[^>]*type=["\']hidden["\'][^>]*>', form_html, re.I):
+            nm = re.search(r'name=["\']([^"\']+)["\']', tag)
+            if not nm:
+                continue
+            val = re.search(r'value=["\']([^"\']*)["\']', tag)
+            data[nm.group(1)] = val.group(1) if val else ""
+        # 내용·필수 필드 덮어쓰기 (라디오/셀렉트는 폼에서 안 잡히므로 명시)
+        data.update({
+            "mode": "modify", "idxno": idxno,
+            "sectionCode": section or self.section,
+            "subSectionCode": data.get("subSectionCode", ""),
             "title": headline, "subTitle": subtitle, "FCKeditor1": body_html,
-            "pub_date": pub_date,
+            "pub_date": pub_date or data.get("pub_date", ""),
             "user_id": self.uid, "user_name": self.user_name, "user_email": self.user_email,
             "article_source": "self", "onoff": "O", "view_level": "A",
-            "view_recognition": "Y", "area": "D", "autoSave": "0", "uora": "U",
-            "level": "B", "article_type": "B", "serial_number": "0", "page": "0",
-            "pdf": "N", "embargo": "N", "idxno": idxno,
-            "keyword": "", "shoulder_title": "", "portal_title": "",
-            "serialCode": "", "embargo_date": "", "embargo_time": "", "send_id": "",
-            "ad_sendid_check": "", "returnAIPage": "", "article_tag_use": "",
-            "recognition": "I",
-        }
+            "view_recognition": "Y", "recognition": "I", "article_type": "B",
+        })
         return s.post(f"{self.base}/news/userArticleWrite.php", data=data,
-                      headers={"Referer": f"{self.base}/news/userArticleWriteForm.html"},
-                      timeout=30)
+                      headers={"Referer": form_url}, timeout=30)
 
     def _upload_image(self, s: requests.Session, idxno: str, path: str) -> None:
         from ..storage import get_storage
@@ -156,11 +167,20 @@ class AtpajuPublisher(Publisher):
             for im in images or []:
                 self._upload_image(s, idxno, im["path"])
             # ND소프트는 승인 흐름(작성중→승인요청→발행)이 있어 '작성중(초안)'으로 들어간다.
-            # 공개 페이지엔 아직 안 보이는 게 정상 — 기자가 CMS에서 검토·승인 후 발행.
             edit_url = f"{self.base}/news/userArticleWriteForm.html?mode=modify&idxno={idxno}"
+            # 검증: 모디파이 폼을 다시 읽어 제목이 실제로 저장됐는지 확인(거짓 성공 방지)
+            try:
+                vr = s.get(edit_url, timeout=20)
+                tm = re.search(r'name=["\']title["\'][^>]*value=["\']([^"\']*)["\']', vr.text)
+                if not (tm and tm.group(1).strip()):
+                    return PublishResult(
+                        False, url=edit_url,
+                        message="저장 후 제목이 비어 있음 — 저장 실패(필드/세션 확인 필요)")
+            except requests.RequestException:
+                pass
             return PublishResult(
                 True, url=edit_url,
-                message="atpaju '작성중(초안)'으로 전송됨 — CMS에서 검토·승인하면 발행됩니다")
+                message="atpaju '작성중(초안)' 저장 완료 — CMS에서 검토·승인하면 발행됩니다")
         except requests.RequestException as e:
             return PublishResult(False, message=f"발행 요청 실패: {e}")
         finally:
