@@ -11,4 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import uvicorn  # noqa: E402
 
 if __name__ == "__main__":
-    uvicorn.run("aute_news.web.app:app", host="127.0.0.1", port=8000, reload=False)
+    # reload=True: 코드 수정 시 자동 재시작(개발 편의). 운영에선 False 권장.
+    uvicorn.run("aute_news.web.app:app", host="127.0.0.1", port=8000,
+                reload=True, reload_dirs=["src"])
