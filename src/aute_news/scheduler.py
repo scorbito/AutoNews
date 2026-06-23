@@ -29,9 +29,21 @@ def due_tenants(conn, window_min: int = 5) -> list[int]:
     due = []
     for r in rows:
         for t in (r["collect_times"] or "").split(","):
-            t = t.strip()
+            t = t.strip().lower()
             if not t:
                 continue
+            # 간격 예약: "30m" 또는 "*/30" = 30분마다
+            iv = None
+            if t.endswith("m") and t[:-1].isdigit():
+                iv = int(t[:-1])
+            elif t.startswith("*/") and t[2:].isdigit():
+                iv = int(t[2:])
+            if iv:
+                if iv > 0 and (now_min % iv) < window_min:
+                    due.append(r["tenant_id"])
+                    break
+                continue
+            # 특정시각: "HH:MM"
             try:
                 hh, mm = (int(x) for x in t.split(":"))
             except ValueError:
