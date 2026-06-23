@@ -101,7 +101,10 @@ def classify_image(data: bytes, ext: str, model: str | None = None) -> ImageKind
         model=model,
         contents=[
             types.Part.from_bytes(data=data, mime_type=mime),
-            "이 이미지를 분류하라. 직인/도장/로고/서식표인지, 아니면 기사에 실을 사진인지 판단하라.",
+            "이 이미지가 '기사에 실을 실제 사진'인지 판단하라. "
+            "직인·도장·로고·기관 CI·슬로건/홍보 배너(예: '변화의 중심 기회의 경기')·"
+            "엠블럼·캐릭터·표/도표·서식은 기사 사진이 아니다(is_article_photo=false). "
+            "실제 현장·인물·행사 사진만 photo 로 판단하라.",
         ],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",

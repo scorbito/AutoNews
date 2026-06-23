@@ -216,6 +216,10 @@ def _save_one(conn, att_id: int, tenant_id: int, idx: int, data: bytes, ext: str
     if not classify:
         selected = bool(w and h and max(w, h) >= _PHOTO_SIDE)
         kind = "photo" if selected else "unknown"
+    # 결정적 백스톱: 해상도 대비 용량이 극히 작으면(단색 로고/CI/슬로건 그래픽)
+    # Gemini가 photo라 해도 기사 사진에서 제외(실사진은 픽셀당 바이트가 훨씬 큼).
+    if selected and w and h and len(data) / (w * h) < 0.08:
+        selected, kind = False, "graphic"
     key = f"images/{tenant_id}/{att_id}/{idx}.{ext}"
     get_storage().put(key, data, mime_for(ext))
     db.insert_image(

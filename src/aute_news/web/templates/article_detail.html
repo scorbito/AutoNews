@@ -56,11 +56,15 @@
     {% endif %}
 
     {% if images %}
-    <h3>매칭 이미지 ({{ images|length }})</h3>
+    <h3>매칭 이미지 ({{ images|length }}) <span class="muted" style="font-size:12px;">— 로고·오매칭은 ✕로 제거</span></h3>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {% for im in images %}
-      <div style="text-align:center; max-width:120px;">
+      <div style="text-align:center; max-width:120px; position:relative;">
         <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
+        <form method="post" action="/a/{{ a.id }}/image/{{ im.id }}/remove" style="position:absolute; top:2px; right:2px;">
+          <button type="submit" title="이 사진 제거"
+                  style="background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; line-height:1;">✕</button>
+        </form>
         {% if im.source %}<div class="muted" style="font-size:10px;">사진 제공: {{ im.source }}</div>{% endif %}
       </div>
       {% endfor %}

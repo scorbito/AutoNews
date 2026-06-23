@@ -403,6 +403,15 @@ def article_save(request: Request, article_id: int, headline: str = Form(...),
     return RedirectResponse(f"/a/{article_id}", status_code=303)
 
 
+@app.post("/a/{article_id}/image/{image_id}/remove")
+def article_image_remove(request: Request, article_id: int, image_id: int):
+    """기사에서 사진 1장 제거(로고·오매칭 등). article_id 연결만 해제."""
+    conn = db.connect()
+    db.assign_image_article(conn, image_id, None, tenant_id=_tenant(request))
+    conn.close()
+    return RedirectResponse(f"/a/{article_id}", status_code=303)
+
+
 @app.post("/a/{article_id}/review")
 def article_review(request: Request, article_id: int):
     conn = db.connect()
