@@ -143,7 +143,7 @@ def _load_classifier(use_gemini: bool):
 
 
 def _save_one(conn, att_id: int, tenant_id: int, idx: int, data: bytes, ext: str,
-              orig_name: str | None, classify, stats: dict):
+              orig_name: str | None, classify, stats: dict, source: str | None = None):
     """이미지 1장: 크기 필터 → (가능하면)Gemini 분류 → 저장. classify를 반환(실패시 None)."""
     w, h = _measure(data)
     if w and h and max(w, h) < _MIN_SIDE:
@@ -163,7 +163,7 @@ def _save_one(conn, att_id: int, tenant_id: int, idx: int, data: bytes, ext: str
     get_storage().put(key, data, mime_for(ext))
     db.insert_image(
         conn, tenant_id=tenant_id, attachment_id=att_id, path=key, orig_name=orig_name,
-        ext=ext, width=w, height=h, bytes=len(data), kind=kind,
+        source=source, ext=ext, width=w, height=h, bytes=len(data), kind=kind,
         selected=1 if selected else 0, caption=caption, ord=idx)
     stats["saved"] += 1
     if selected:
@@ -187,13 +187,14 @@ def process_zip_images(conn, att_id: int, files, use_gemini: bool = True,
 
 
 def process_images(conn, att_id: int, draft: ArticleDraft, use_gemini: bool = True,
-                   tenant_id: int = db.DEFAULT_TENANT) -> dict:
-    """draft.images(문서 임베드 이미지)를 저장·선별. 파일명이 없어 orig_name=None."""
+                   tenant_id: int = db.DEFAULT_TENANT, source: str | None = None) -> dict:
+    """draft.images(문서 임베드/웹 이미지)를 저장·선별. source 주면 출처로 기록."""
     db.clear_images(conn, att_id, tenant_id=tenant_id)
     stats = {"total": 0, "saved": 0, "selected": 0, "skipped_small": 0}
     classify = _load_classifier(use_gemini)
     for idx, img in enumerate(draft.images):
         stats["total"] += 1
-        classify = _save_one(conn, att_id, tenant_id, idx, img.data, img.ext, None, classify, stats)
+        classify = _save_one(conn, att_id, tenant_id, idx, img.data, img.ext,
+                             None, classify, stats, source=source)
     conn.commit()
     return stats

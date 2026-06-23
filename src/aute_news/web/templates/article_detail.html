@@ -58,7 +58,12 @@
     {% if images %}
     <h3>매칭 이미지 ({{ images|length }})</h3>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      {% for im in images %}<img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">{% endfor %}
+      {% for im in images %}
+      <div style="text-align:center; max-width:120px;">
+        <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
+        {% if im.source %}<div class="muted" style="font-size:10px;">출처: {{ im.source }}</div>{% endif %}
+      </div>
+      {% endfor %}
     </div>
     {% endif %}
   </div>

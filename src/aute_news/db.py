@@ -396,9 +396,10 @@ def clear_images(conn, att_id: int, tenant_id: int = DEFAULT_TENANT) -> None:
 def insert_image(conn, **kw) -> int:
     kw.setdefault("tenant_id", DEFAULT_TENANT)
     kw.setdefault("orig_name", None)
+    kw.setdefault("source", None)
     row = conn.execute(
-        """INSERT INTO images (tenant_id, attachment_id, path, orig_name, ext, width, height, bytes, kind, selected, caption, ord)
-           VALUES (:tenant_id,:attachment_id,:path,:orig_name,:ext,:width,:height,:bytes,:kind,:selected,:caption,:ord)
+        """INSERT INTO images (tenant_id, attachment_id, path, orig_name, source, ext, width, height, bytes, kind, selected, caption, ord)
+           VALUES (:tenant_id,:attachment_id,:path,:orig_name,:source,:ext,:width,:height,:bytes,:kind,:selected,:caption,:ord)
            RETURNING id""", kw).fetchone()
     return row["id"]
 

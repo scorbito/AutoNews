@@ -127,6 +127,7 @@ CREATE TABLE images (
     attachment_id   BIGINT NOT NULL REFERENCES attachments(id),
     path            TEXT,
     orig_name       TEXT,                       -- 원본 파일명(ZIP 등) — LLM 매칭/번호 힌트용
+    source          TEXT,                       -- 출처(웹 링크에서 온 사진의 매체/URL)
     ext             TEXT,
     width           INTEGER,
     height          INTEGER,
