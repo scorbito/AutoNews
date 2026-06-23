@@ -295,6 +295,25 @@ def message_detail(request: Request, message_id: int):
         request, "message_detail.html", {"m": msg, "atts": atts, "art_count": art_count})
 
 
+@app.post("/messages/bulk-process")
+def messages_bulk_process(request: Request, ids: Annotated[list[int], Form()] = []):
+    """선택한 메일들을 한 번에 기사 생성(처리). review 모드."""
+    from ..pipeline import process_message
+    t = _tenant(request)
+    conn = db.connect()
+    done = made = 0
+    for mid in ids:
+        try:
+            res = process_message(conn, mid, mode="review", tenant_id=t)
+            done += 1
+            made += len(res.get("articles", []))
+        except Exception:  # noqa: BLE001
+            pass
+    conn.close()
+    return RedirectResponse(
+        f"/inbox?msg=일괄 처리 — 메일 {done}건 → 기사 {made}건 생성", status_code=303)
+
+
 @app.post("/messages/{message_id}/process")
 def message_process(request: Request, message_id: int):
     """메일 1건을 처리(트리아지→분할→사진매칭→기사 생성). review 모드."""

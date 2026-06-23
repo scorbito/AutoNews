@@ -9,39 +9,60 @@
   </div>
 </div>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
-<p class="muted" style="margin-top:4px;">메일을 하나씩 골라 <b>기사 생성</b>으로 처리합니다. (분할·사진매칭·생성 / 기사 많으면 시간이 걸려요)</p>
+<p class="muted" style="margin-top:4px;">메일을 골라 <b>기사 생성</b>으로 처리합니다(분할·사진매칭·생성). 발행은 기사 목록에서.</p>
 
-<table>
-  <thead><tr>
-    <th style="width:40px;">#</th><th>제목</th><th style="width:130px;">첨부</th>
-    <th style="width:90px;">트리아지</th><th style="width:80px;">기사</th><th style="width:110px;"></th>
-  </tr></thead>
-  <tbody>
-  {% for m in msgs %}
-    <tr>
-      <td class="muted">{{ m.id }}</td>
-      <td>
-        <div><a href="/messages/{{ m.id }}">{{ m.subject or '(제목 없음)' }}</a></div>
-        <div class="muted" style="font-size:12px;">{{ m.sender }} · {{ m.date }}</div>
-      </td>
-      <td class="muted" style="font-size:12px;">
-        {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
-        {% if m.img_count %}<br>📷 {{ m.img_count }}{% endif %}
-      </td>
-      <td>{% if m.pipeline %}<span class="tag s-draft">{{ m.pipeline }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
-      <td>
-        {% if m.art_count %}<a href="/?status=all">기사 {{ m.art_count }}건</a>{% else %}<span class="muted">0</span>{% endif %}
-      </td>
-      <td>
-        <form method="post" action="/messages/{{ m.id }}/process"
-              onsubmit="this.querySelector('button').textContent='처리중…'; this.querySelector('button').disabled=true;">
-          <button type="submit" class="{% if m.art_count %}gray{% endif %}">
-            {% if m.art_count %}↻ 재생성{% else %}⚡ 기사 생성{% endif %}</button>
-        </form>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<form method="post" action="/messages/bulk-process"
+      onsubmit="this.querySelector('#bulkbtn').textContent='처리중… (선택 메일 수만큼 시간이 걸려요)'; this.querySelector('#bulkbtn').disabled=true;">
+  <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
+    <label style="font-weight:normal;"><input type="checkbox" id="checkall"> 전체</label>
+    <button type="submit" id="bulkbtn">⚡ 선택 일괄 기사 생성</button>
+    <span class="muted" id="selcount">0건 선택</span>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th style="width:34px;"></th><th style="width:40px;">#</th><th>제목</th><th style="width:130px;">첨부</th>
+      <th style="width:90px;">트리아지</th><th style="width:80px;">기사</th><th style="width:110px;"></th>
+    </tr></thead>
+    <tbody>
+    {% for m in msgs %}
+      <tr>
+        <td><input type="checkbox" class="sel" name="ids" value="{{ m.id }}"></td>
+        <td class="muted">{{ m.id }}</td>
+        <td>
+          <div><a href="/messages/{{ m.id }}">{{ m.subject or '(제목 없음)' }}</a></div>
+          <div class="muted" style="font-size:12px;">{{ m.sender }} · {{ m.date }}</div>
+        </td>
+        <td class="muted" style="font-size:12px;">
+          {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
+          {% if m.img_count %}<br>📷 {{ m.img_count }}{% endif %}
+        </td>
+        <td>{% if m.pipeline %}<span class="tag s-draft">{{ m.pipeline }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td>
+          {% if m.art_count %}<a href="/?status=all">기사 {{ m.art_count }}건</a>{% else %}<span class="muted">0</span>{% endif %}
+        </td>
+        <td>
+          <!-- 개별 처리(formaction으로 같은 폼 안에서) -->
+          <button type="submit" formaction="/messages/{{ m.id }}/process" class="{% if m.art_count %}gray{% endif %}"
+                  style="font-size:12px; padding:5px 10px;">
+            {% if m.art_count %}↻ 재생성{% else %}⚡ 생성{% endif %}</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
 {% if not msgs %}<p class="muted">수집된 메일이 없습니다. "📥 메일 수집"으로 가져오세요.</p>{% endif %}
+
+<script>
+  const boxes = () => Array.from(document.querySelectorAll('.sel'));
+  const count = () => {
+    document.getElementById('selcount').textContent =
+      boxes().filter(b => b.checked).length + '건 선택';
+  };
+  document.getElementById('checkall').addEventListener('change', e => {
+    boxes().forEach(b => b.checked = e.target.checked); count();
+  });
+  document.addEventListener('change', e => { if (e.target.classList.contains('sel')) count(); });
+</script>
 {% endblock %}
