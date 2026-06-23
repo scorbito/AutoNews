@@ -90,27 +90,35 @@ def list_imap_folders(host: str, email: str, password: str) -> list[dict]:
 
 
 def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
-                     password: str, folders: list[str], batch_limit: int = 200) -> dict:
-    """한 메일함을 UID 추적으로 수집(tenant_id 태깅). 핵심 루프."""
+                     password: str, folders: list[str], batch_limit: int = 200,
+                     collect_all: bool = False) -> dict:
+    """한 메일함을 UID 추적으로 수집(tenant_id 태깅). 핵심 루프.
+
+    collect_all=True(테스트): 기간/기준선 무시하고 폴더 전체를 매번 훑는다.
+    중복은 messages.UNIQUE(message_id)로 자동 제외돼 재수집해도 안전.
+    """
     stats = {"account": account, "new_messages": 0, "attachments": 0,
              "extracted": 0, "manual": 0, "baselined": 0}
     with MailBox(host).login(email, password) as mb:
         for folder in folders:
             mb.folder.set(folder)
-            # 최초 수집: 기준선이 없으면 '오늘 00시(KST)'를 경계로 잡아
-            # 그 이전 과거 메일은 건너뛰고, 오늘 0시 이후 메일부터 수집한다.
-            if not db.folder_initialized(conn, account, folder, tenant_id=tenant_id):
-                today = datetime.now(KST).date()
-                today_uids = [int(u) for u in mb.uids(AND(date_gte=today))]
-                if today_uids:
-                    baseline = min(today_uids) - 1   # 오늘분부터 일반 루프가 수집
-                else:
-                    baseline = max((int(u) for u in mb.uids()), default=0)
-                db.set_last_uid(conn, account, folder, baseline, tenant_id=tenant_id)
-                conn.commit()
-                stats["baselined"] += 1
-                # continue 하지 않고 아래 일반 수집으로 진행(오늘분 수집)
-            last_uid = db.get_last_uid(conn, account, folder, tenant_id=tenant_id)
+            if collect_all:
+                last_uid = 0                     # 전체 수집(기준선 무시)
+            else:
+                # 최초 수집: 기준선이 없으면 '오늘 00시(KST)'를 경계로 잡아
+                # 그 이전 과거 메일은 건너뛰고, 오늘 0시 이후 메일부터 수집한다.
+                if not db.folder_initialized(conn, account, folder, tenant_id=tenant_id):
+                    today = datetime.now(KST).date()
+                    today_uids = [int(u) for u in mb.uids(AND(date_gte=today))]
+                    if today_uids:
+                        baseline = min(today_uids) - 1   # 오늘분부터 일반 루프가 수집
+                    else:
+                        baseline = max((int(u) for u in mb.uids()), default=0)
+                    db.set_last_uid(conn, account, folder, baseline, tenant_id=tenant_id)
+                    conn.commit()
+                    stats["baselined"] += 1
+                    # continue 하지 않고 아래 일반 수집으로 진행(오늘분 수집)
+            last_uid = 0 if collect_all else db.get_last_uid(conn, account, folder, tenant_id=tenant_id)
             max_uid = last_uid
             for msg in mb.fetch(AND(uid=f"{last_uid + 1}:*"),
                                 mark_seen=False, bulk=False, limit=batch_limit):
@@ -168,7 +176,8 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                     if draft and draft.images:
                         images.process_images(conn, att_id, draft, tenant_id=tenant_id)
 
-            db.set_last_uid(conn, account, folder, max_uid, tenant_id=tenant_id)
+            if not collect_all:                  # 전체수집 모드는 기준선을 남기지 않음
+                db.set_last_uid(conn, account, folder, max_uid, tenant_id=tenant_id)
             conn.commit()
     return stats
 
@@ -177,7 +186,8 @@ def _collect_one_account(conn, tenant_id: int, mail: dict) -> dict:
     """기자 메일 설정(dict) 1건 수집. account 키는 이메일(기자별 격리)."""
     folders = [f.strip() for f in (mail.get("imap_folders") or "INBOX").split(",") if f.strip()]
     return _collect_mailbox(conn, tenant_id, mail["imap_email"], mail["imap_host"],
-                            mail["imap_email"], mail["imap_password"], folders)
+                            mail["imap_email"], mail["imap_password"], folders,
+                            collect_all=bool(mail.get("collect_all")))
 
 
 def collect_for_user(user_id: str) -> dict:

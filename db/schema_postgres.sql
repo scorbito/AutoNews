@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS user_mail_config (
     imap_password_enc TEXT,
     imap_folders      TEXT,
     collect_enabled   INTEGER NOT NULL DEFAULT 0,
+    collect_all       INTEGER NOT NULL DEFAULT 0,   -- 테스트: 기간 무시 전체 수집
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_user_mail_tenant ON user_mail_config(tenant_id);

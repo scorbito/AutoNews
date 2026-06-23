@@ -97,7 +97,7 @@ def set_tenant_config(conn, tenant_id: int, *, imap_password: str | None = None,
 
 # --- 기자(사용자)별 메일 설정 ---
 
-_USER_MAIL_COLS = ("imap_host", "imap_email", "imap_folders", "collect_enabled")
+_USER_MAIL_COLS = ("imap_host", "imap_email", "imap_folders", "collect_enabled", "collect_all")
 
 
 def get_user_mail(conn, user_id: str) -> dict | None:

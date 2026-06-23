@@ -327,9 +327,10 @@ async def settings_folders(request: Request):
     form = await request.form()
     folders = ",".join(form.getlist("folders"))
     enabled = 1 if form.get("collect_enabled") == "1" else 0
+    collect_all = 1 if form.get("collect_all") == "1" else 0
     conn = db.connect()
     db.set_user_mail(conn, request.session["user_id"], _tenant(request),
-                     imap_folders=folders, collect_enabled=enabled)
+                     imap_folders=folders, collect_enabled=enabled, collect_all=collect_all)
     conn.close()
     return RedirectResponse("/settings", status_code=303)
 
