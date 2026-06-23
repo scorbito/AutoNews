@@ -89,36 +89,32 @@ class AtpajuPublisher(Publisher):
     def _write(self, s: requests.Session, idxno: str, headline: str,
                subtitle: str, body_html: str, pub_date: str,
                section: str | None = None) -> requests.Response:
-        """실제 작성 폼(newsWriteForm)을 읽어 hidden 기본값을 그대로 가져온 뒤,
-        제목·본문만 덮어써서 전송한다(브라우저 저장과 동일한 필드 세트 보장).
+        """실제 브라우저 저장 요청(cURL 캡처)과 동일하게 전송.
 
-        핵심: autoSave는 폼의 빈 값('')을 그대로 써야 '실제 저장'으로 처리된다.
+        핵심(브라우저와의 차이): inputState=Y로 슬롯을 입력모드로 열고(GET),
+        Origin 헤더와 Referer(inputState=Y)를 포함해 POST. autoSave=1.
         """
-        form_url = f"{self.base}/news/userArticleWriteForm.html?mode=modify&idxno={idxno}"
-        fr = s.get(form_url, timeout=20)
-        fm = re.search(r'<form[^>]*id=["\']newsWriteForm["\'][^>]*>(.*?)</form>',
-                       fr.text, re.S | re.I)
-        form_html = fm.group(1) if fm else ""
-        data: dict[str, str] = {}
-        for tag in re.findall(r'<input[^>]*type=["\']hidden["\'][^>]*>', form_html, re.I):
-            nm = re.search(r'name=["\']([^"\']+)["\']', tag)
-            if not nm:
-                continue
-            val = re.search(r'value=["\']([^"\']*)["\']', tag)
-            data[nm.group(1)] = val.group(1) if val else ""
-        # 내용·필수 필드 덮어쓰기 (라디오/셀렉트는 폼에서 안 잡히므로 명시)
-        data.update({
-            "mode": "modify", "idxno": idxno,
-            "sectionCode": section or self.section,
-            "subSectionCode": data.get("subSectionCode", ""),
-            "title": headline, "subTitle": subtitle, "FCKeditor1": body_html,
-            "pub_date": pub_date or data.get("pub_date", ""),
+        form_url = (f"{self.base}/news/userArticleWriteForm.html"
+                    f"?mode=modify&idxno={idxno}&inputState=Y")
+        s.get(form_url, timeout=20)        # 슬롯을 입력모드로 연다
+        data = {
+            "uora": "U", "article_tag_use": "", "mode": "modify", "idxno": idxno,
+            "area": "D", "view_level": "A", "view_recognition": "Y", "embargo": "N",
+            "autoSave": "1", "returnAIPage": "", "ad_article_check": "0",
+            "ad_sendid_check": "", "send_id": "", "level": "B", "recognition": "I",
+            "article_type": "B", "embargo_date": pub_date, "embargo_time": "00:00",
+            "onoff": "O", "serial_number": "0", "page": "0", "pdf": "N",
+            "pub_date": pub_date, "article_source": "self",
+            "sectionCode": section or self.section, "subSectionCode": "", "serialCode": "",
             "user_id": self.uid, "user_name": self.user_name, "user_email": self.user_email,
-            "article_source": "self", "onoff": "O", "view_level": "A",
-            "view_recognition": "Y", "recognition": "I", "article_type": "B",
-        })
-        return s.post(f"{self.base}/news/userArticleWrite.php", data=data,
-                      headers={"Referer": form_url}, timeout=30)
+            "title": headline, "shoulder_title": "", "portal_title": "",
+            "subTitle": subtitle, "FCKeditor1": body_html, "keyword": "",
+        }
+        return s.post(
+            f"{self.base}/news/userArticleWrite.php", data=data,
+            headers={"Origin": self.base, "Referer": form_url,
+                     "Upgrade-Insecure-Requests": "1"},
+            timeout=30)
 
     def _upload_image(self, s: requests.Session, idxno: str, path: str) -> None:
         from ..storage import get_storage
