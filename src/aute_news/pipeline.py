@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from . import articlegen, db, images, links, router
 from .extractors import ExtractError, detect_format, extract_bytes, extract_url
-from .extractors.archive import IMAGE_EXTS
+from .extractors.archive import IMAGE_EXTS, expand_zip, is_zip
 from .extractors.base import ImageAsset
 from .publishers import get_publisher
 from .split import run_split
@@ -133,8 +133,17 @@ def _generate_download_articles(conn, message_pk: int, urls: list[str], mode: st
     files = []
     for url in urls:
         got = links.download_file(url)
-        if got:
-            files.append((got[0], got[1], url))
+        if not got:
+            continue
+        fn, data = got
+        if is_zip(fn, data):
+            # 네이버/다음 대용량첨부·정부 배포가 ZIP 번들로 오는 경우: 코드가 푼다.
+            # 문서를 앞, 이미지를 뒤로 정렬 → 아래 순서 그룹핑에서 문서에 사진이 붙는다.
+            expanded = expand_zip(data, images_only=False)
+            for ef in sorted(expanded, key=lambda e: e.is_image):
+                files.append((ef.name, ef.data, url))
+        else:
+            files.append((fn, data, url))
     groups, cur = [], None
     for fn, data, url in files:
         fmt = detect_format(fn)

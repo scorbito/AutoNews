@@ -13,8 +13,11 @@ from .llm import get_llm
 _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+')
 
 # 파일 다운로드 링크로 보이는 URL 패턴(첨부 다운로드). 안전: 수신거부 등은 건드리지 않음.
-_DOWNLOAD_PAT = re.compile(r"/(?:download|attachfile|filedown|atchfile|fileDown|getfile)",
-                           re.IGNORECASE)
+_DOWNLOAD_PAT = re.compile(
+    r"/(?:download|downloadfile|filedownload|attachfile|filedown|atchfile|fileDown|getfile)",
+    re.IGNORECASE)
+# 네이버/다음 등 대용량첨부 호스트(경로가 아닌 호스트로 식별되는 다운로드 서비스).
+_BIGFILE_HOST = ("bigfile.mail.naver.com", "bigfile.mail.daum.net", "bigfile.mail.kakao.com")
 _MAX_DOWNLOAD = 30 * 1024 * 1024  # 30MB
 _ASSET_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".css", ".js")
 _SKIP_HINT = ("unsubscribe", "수신거부", "/logout", "login", "mailto:", "googleusercontent",
@@ -78,9 +81,10 @@ def extract_download_links(body: str) -> list[str]:
     out, seen = [], set()
     for m in _URL_RE.finditer(body or ""):
         url = m.group(0).replace("&amp;", "&").rstrip(").,;'\"")
-        if not _DOWNLOAD_PAT.search(url):
+        low = url.lower()
+        if not _DOWNLOAD_PAT.search(url) and not any(h in low for h in _BIGFILE_HOST):
             continue
-        if any(h in url.lower() for h in ("unsubscribe", "수신거부", "reject")):
+        if any(h in low for h in ("unsubscribe", "수신거부", "reject")):
             continue
         if url not in seen:
             seen.add(url)
