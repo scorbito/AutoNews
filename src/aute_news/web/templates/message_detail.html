@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}메일 상세{% endblock %}
+{% block body %}
+<p><a href="/inbox">← 수집함</a></p>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;">{{ m.subject or '(제목 없음)' }}</h2>
+  <div class="muted" style="font-size:13px;">
+    {{ m.sender }} · {{ m.date }} · {{ m.folder }}
+    {% if m.pipeline %}· <span class="tag s-draft">{{ m.pipeline }}</span>{% endif %}
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <form method="post" action="/messages/{{ m.id }}/process"
+          onsubmit="this.querySelector('button').textContent='처리중… (기사 많으면 시간 걸려요)'; this.querySelector('button').disabled=true;">
+      <button type="submit" class="green">{% if art_count %}↻ 재생성{% else %}⚡ 기사 생성{% endif %}</button>
+    </form>
+    {% if art_count %}<a href="/?status=all" style="font-size:13px;">생성된 기사 {{ art_count }}건 보기 →</a>{% endif %}
+  </div>
+</div>
+
+{% if m.body_text %}
+<div class="card" style="margin-top:12px;">
+  <h3>메일 본문</h3>
+  <div class="muted" style="white-space:pre-wrap; max-height:240px; overflow:auto; font-size:13px;">{{ m.body_text[:3000] }}</div>
+</div>
+{% endif %}
+
+{% for a in atts %}
+<div class="card" style="margin-top:12px;">
+  <h3 style="margin:0 0 6px;">📎 {{ a.row.filename }}
+    <span class="tag s-draft">{{ a.row.format }}</span>
+    <span class="tag s-{{ a.row.extract_status }}">{{ a.row.extract_status }}</span>
+  </h3>
+  {% if a.row.extracted_text %}
+  <details>
+    <summary class="muted" style="cursor:pointer;">추출 텍스트 ({{ a.row.extracted_text|length }}자)</summary>
+    <div style="white-space:pre-wrap; max-height:340px; overflow:auto; font-size:13px; margin-top:8px;">{{ a.row.extracted_text[:5000] }}</div>
+  </details>
+  {% endif %}
+  {% if a.images %}
+  <div style="margin-top:8px;">
+    <div class="muted" style="font-size:12px;">사진 {{ a.images|length }}장 (채택 {{ a.images|selectattr('selected')|list|length }}장)</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+      {% for im in a.images %}
+      <div style="text-align:center;">
+        <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px; {% if not im.selected %}opacity:.4;{% endif %}">
+        <div class="muted" style="font-size:10px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ im.orig_name or im.ext }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% if not atts %}<p class="muted" style="margin-top:12px;">첨부 없음 (메일 본문/링크로 기사화)</p>{% endif %}
+{% endblock %}

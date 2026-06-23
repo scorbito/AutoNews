@@ -21,7 +21,7 @@
     <tr>
       <td class="muted">{{ m.id }}</td>
       <td>
-        <div>{{ m.subject or '(제목 없음)' }}</div>
+        <div><a href="/messages/{{ m.id }}">{{ m.subject or '(제목 없음)' }}</a></div>
         <div class="muted" style="font-size:12px;">{{ m.sender }} · {{ m.date }}</div>
       </td>
       <td class="muted" style="font-size:12px;">

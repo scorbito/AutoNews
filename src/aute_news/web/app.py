@@ -273,6 +273,28 @@ def inbox(request: Request, msg: str = ""):
         request, "inbox.html", {"msgs": msgs, "msg": msg})
 
 
+@app.get("/messages/{message_id}", response_class=HTMLResponse)
+def message_detail(request: Request, message_id: int):
+    """수집된 메일 1건 상세 — 본문·첨부 추출 텍스트·사진(처리 전 미리보기)."""
+    t = _tenant(request)
+    conn = db.connect()
+    msg = conn.execute("SELECT * FROM messages WHERE id=? AND tenant_id=?",
+                       (message_id, t)).fetchone()
+    if not msg:
+        conn.close()
+        return HTMLResponse("메일을 찾을 수 없습니다.", 404)
+    att_rows = conn.execute(
+        "SELECT * FROM attachments WHERE message_pk=? AND tenant_id=? ORDER BY id",
+        (message_id, t)).fetchall()
+    atts = [{"row": a, "images": db.list_images(conn, a["id"], tenant_id=t)} for a in att_rows]
+    art_count = conn.execute(
+        """SELECT COUNT(*) c FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
+           WHERE a.message_pk=? AND ar.tenant_id=?""", (message_id, t)).fetchone()["c"]
+    conn.close()
+    return templates.TemplateResponse(
+        request, "message_detail.html", {"m": msg, "atts": atts, "art_count": art_count})
+
+
 @app.post("/messages/{message_id}/process")
 def message_process(request: Request, message_id: int):
     """메일 1건을 처리(트리아지→분할→사진매칭→기사 생성). review 모드."""
@@ -299,7 +321,7 @@ def collect_now(request: Request):
     try:
         stats = collect_for_user(request.session["user_id"])
     except Exception as e:  # noqa: BLE001 (메일 로그인 실패 등)
-        return RedirectResponse(f"/legacy?msg=수집 실패: {type(e).__name__}", status_code=303)
+        return RedirectResponse(f"/inbox?msg=수집 실패: {type(e).__name__}", status_code=303)
     if stats.get("skipped"):
         msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
     elif stats.get("baselined") and not stats.get("new_messages"):
@@ -308,7 +330,7 @@ def collect_now(request: Request):
     else:
         msg = (f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, "
                f"첨부 {stats.get('attachments', 0)}개")
-    return RedirectResponse(f"/legacy?msg={msg}", status_code=303)
+    return RedirectResponse(f"/inbox?msg={msg}", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
