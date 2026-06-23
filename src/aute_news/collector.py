@@ -15,7 +15,7 @@ from imap_tools import AND, MailBox
 
 from . import db, images
 from .extractors import ExtractError, detect_format, extract_bytes
-from .extractors.archive import expand_zip, is_zip
+from .extractors.archive import IMAGE_EXTS, ExpandedFile, expand_zip, is_zip
 from .storage import get_storage, mime_for
 
 load_dotenv()
@@ -158,6 +158,19 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                             stats["extracted"] += 1
                         else:
                             stats["manual"] += 1
+                        continue
+
+                    # 이미지 첨부(jpg/png 등): 이미지로 저장(원본 파일명 보존) → 기사 매칭 대상
+                    ext = att.filename.rsplit(".", 1)[-1].lower() if "." in att.filename else ""
+                    if ext in IMAGE_EXTS:
+                        att_id = db.insert_attachment(
+                            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
+                            format=ext, path=key, size=len(att.payload),
+                            extracted_text=None, extract_status="done")
+                        images.process_zip_images(
+                            conn, att_id, [ExpandedFile(att.filename, att.payload, ext)],
+                            tenant_id=tenant_id)
+                        stats["extracted"] += 1
                         continue
 
                     extracted_text, status, draft = None, "pending", None

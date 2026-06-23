@@ -319,6 +319,15 @@ def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_
                  (message_pk, tenant_id))
 
 
+def list_message_articles(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:
+    """한 메일의 (문서 기반) 기사들 — weblink/body 기사는 제외(각자 매칭됨)."""
+    return conn.execute(
+        """SELECT ar.* FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
+           WHERE a.message_pk=? AND ar.tenant_id=? AND a.format NOT IN ('weblink','body')
+           ORDER BY ar.id""",
+        (message_pk, tenant_id)).fetchall()
+
+
 def list_message_images(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> list:
     """한 메일의 첨부 이미지 — zip 번들 + 문서 임베드 통합.
 

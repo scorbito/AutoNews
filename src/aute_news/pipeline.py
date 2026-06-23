@@ -13,13 +13,15 @@ import os
 from urllib.parse import urlparse
 
 from . import articlegen, db, images, links
-from .extractors import ExtractError, detect_format, extract_bytes, extract_url, select_primary
+from .extractors import ExtractError, detect_format, extract_bytes, extract_url
 from .extractors.archive import IMAGE_EXTS
 from .extractors.base import ImageAsset
 from .publishers import get_publisher
 from .split import run_split
 from .storage import get_storage, mime_for
 from .triage import build_meta, run_triage
+
+_DOC_FORMATS = ("hwp", "hwpx", "pdf", "docx", "doc")
 
 
 def _safe(s: str) -> str:
@@ -46,10 +48,9 @@ def publish_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENANT):
     return res
 
 
-def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sender: str,
-                        mode: str, tenant_id: int = db.DEFAULT_TENANT,
-                        message_pk: int | None = None) -> list[int]:
-    """추출 텍스트 → split → 이미지매칭 → generate → (auto면)발행. 기사 id 목록 반환."""
+def _split_articles(conn, attachment_id: int, text: str, subject: str, sender: str,
+                    tenant_id: int = db.DEFAULT_TENANT) -> list[int]:
+    """추출 텍스트 → split → articles 행 삽입(status=split). 매칭·생성은 별도. id 목록 반환."""
     res = run_split(text, subject=subject,
                     from_name=(sender or "").split("<")[0].strip(),
                     body_text_preview="")
@@ -65,15 +66,27 @@ def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sende
             category_hint=a.get("category_hint"), status="split")
         ids.append(aid)
     conn.commit()
+    return ids
+
+
+def _generate_all(conn, ids: list[int], mode: str, tenant_id: int) -> None:
+    for aid in ids:
+        articlegen.generate_for_article(conn, aid, tenant_id=tenant_id)
+        if mode == "auto":
+            publish_article(conn, aid, tenant_id=tenant_id)
+
+
+def _split_and_generate(conn, attachment_id: int, text: str, subject: str, sender: str,
+                        mode: str, tenant_id: int = db.DEFAULT_TENANT,
+                        message_pk: int | None = None) -> list[int]:
+    """단일 문서: split → 이미지매칭 → generate. 기사 id 목록 반환."""
+    ids = _split_articles(conn, attachment_id, text, subject, sender, tenant_id)
     # 이미지 매칭(독립 단계): 메일 전체 이미지(zip+임베드)를 기사에 배정.
     if message_pk is not None:
         images.match_message_images(conn, message_pk, attachment_id, tenant_id=tenant_id)
     else:
         images.match_images_to_articles(conn, attachment_id, tenant_id=tenant_id)
-    for aid in ids:
-        articlegen.generate_for_article(conn, aid, tenant_id=tenant_id)
-        if mode == "auto":
-            publish_article(conn, aid, tenant_id=tenant_id)
+    _generate_all(conn, ids, mode, tenant_id)
     return ids
 
 
@@ -199,24 +212,32 @@ def process_message(conn, message_pk: int, mode: str | None = None,
         "SELECT * FROM attachments WHERE message_pk=? AND tenant_id=? AND extract_status='done'",
         (message_pk, tenant_id)).fetchall()
 
-    if pipeline == "BODY_AS_ARTICLE" or not att_rows:
-        # 본문이 진짜 기사일 때만 본문 기사화(링크/파일 다이제스트면 그쪽으로만 처리)
-        if not link_urls and not download_urls and len(body.strip()) >= 50:
-            pk = db.insert_attachment(conn, tenant_id=tenant_id, message_pk=message_pk,
-                                      filename="(본문)", format="body", path="", size=len(body),
-                                      extracted_text=body, extract_status="done")
-            conn.commit()
-            ids += _split_and_generate(conn, pk, body, msg["subject"], msg["sender"],
-                                       mode, tenant_id, message_pk=message_pk)
-    else:
-        # 첨부 기반: 본문 추출용 1건 선택
-        primary = select_primary([{"filename": r["filename"]} for r in att_rows])
-        chosen = att_rows[0]
-        if primary:
-            chosen = next((r for r in att_rows if r["filename"] == primary["filename"]), att_rows[0])
-        ids += _split_and_generate(conn, chosen["id"], chosen["extracted_text"],
-                                   msg["subject"], msg["sender"], mode, tenant_id,
-                                   message_pk=message_pk)
+    doc_atts = [r for r in att_rows
+                if r["format"] in _DOC_FORMATS and (r["extracted_text"] or "").strip()]
+
+    if len(doc_atts) == 1:
+        # 단일 문서(첨부+ZIP 사진 등) — 검증된 단일 경로
+        d = doc_atts[0]
+        ids += _split_and_generate(conn, d["id"], d["extracted_text"], msg["subject"],
+                                   msg["sender"], mode, tenant_id, message_pk=message_pk)
+    elif len(doc_atts) > 1:
+        # 문서 여러 개(메일에 보도자료 여러 건이 각각 첨부) — 각 문서 → 기사,
+        # 메시지 전체 이미지를 전체 기사에 한 번에 매칭(LLM, 제목·파일명 기준)
+        art_ids = []
+        for d in doc_atts:
+            art_ids += _split_articles(conn, d["id"], d["extracted_text"],
+                                       msg["subject"], msg["sender"], tenant_id)
+        images.match_message_images_all(conn, message_pk, tenant_id=tenant_id)
+        _generate_all(conn, art_ids, mode, tenant_id)
+        ids += art_ids
+    elif not link_urls and not download_urls and len(body.strip()) >= 50:
+        # 문서 첨부 없음 + 링크/다운로드도 아님 → 본문 자체를 기사화
+        pk = db.insert_attachment(conn, tenant_id=tenant_id, message_pk=message_pk,
+                                  filename="(본문)", format="body", path="", size=len(body),
+                                  extracted_text=body, extract_status="done")
+        conn.commit()
+        ids += _split_and_generate(conn, pk, body, msg["subject"], msg["sender"],
+                                   mode, tenant_id, message_pk=message_pk)
 
     # 3) 본문 링크 기사화 (첨부와 병행)
     if link_urls:

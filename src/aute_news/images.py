@@ -64,6 +64,63 @@ def _llm_assign(articles: list, imgs: list) -> dict:
     return out
 
 
+def _llm_assign_articles(articles: list, imgs: list) -> dict:
+    """여러 문서의 기사가 섞인 경우 — 사진을 기사 id에 배정. {image_id: article_id|None}."""
+    from .llm import get_llm
+    art_lines = "\n".join(
+        f"  [{a['id']}] {a['headline'] or a['title'] or ''}" for a in articles)
+    img_lines = "\n".join(f"  [{im['id']}] {_img_name(im)}" for im in imgs)
+    system = (
+        "너는 보도자료 사진을 기사에 배정하는 편집 보조다. "
+        "기사 목록([기사id] 제목)과 사진 목록([사진id] 파일명)이 주어진다. "
+        "각 사진을 가장 알맞은 기사 id에 배정하라(파일명에 담긴 인물·제목 단서 사용). "
+        "어느 기사에도 안 맞으면 article_id를 null로. "
+        '반드시 JSON만: {"assignments":[{"image_id":정수,"article_id":정수 또는 null}]}'
+    )
+    user = f"## 기사\n{art_lines}\n\n## 사진\n{img_lines}"
+    res = get_llm().complete_json(system, user, temperature=0.0)
+    out: dict[int, int | None] = {}
+    for a in res.get("assignments", []) or []:
+        try:
+            aid = a.get("article_id")
+            out[int(a["image_id"])] = int(aid) if aid is not None else None
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
+
+
+def match_message_images_all(conn, message_pk: int, tenant_id: int = db.DEFAULT_TENANT,
+                             use_llm: bool = True) -> dict:
+    """메일의 모든 문서 기사 ↔ 모든 이미지 매칭(문서 여러 개인 메일용). LLM이 제목·파일명으로 배정."""
+    articles = db.list_message_articles(conn, message_pk, tenant_id=tenant_id)
+    imgs = [im for im in db.list_message_images(conn, message_pk, tenant_id=tenant_id)
+            if im["selected"]]
+    stats = {"articles": len(articles), "images": len(imgs), "matched": 0, "unmatched": 0}
+    if not articles or not imgs:
+        return stats
+    if len(articles) == 1:
+        for im in imgs:
+            db.assign_image_article(conn, im["id"], articles[0]["id"], tenant_id=tenant_id)
+        stats["matched"] = len(imgs)
+        conn.commit()
+        return stats
+    assign = {}
+    if use_llm:
+        try:
+            assign = _llm_assign_articles(articles, imgs)
+        except Exception:  # noqa: BLE001
+            assign = {}
+    valid = {a["id"] for a in articles}
+    for im in imgs:
+        aid = assign.get(im["id"])
+        if aid not in valid:
+            aid = None
+        db.assign_image_article(conn, im["id"], aid, tenant_id=tenant_id)
+        stats["matched" if aid else "unmatched"] += 1
+    conn.commit()
+    return stats
+
+
 def match_message_images(conn, message_pk: int, primary_attachment_id: int,
                          tenant_id: int = db.DEFAULT_TENANT, use_llm: bool = True) -> dict:
     """메시지 전체 이미지(zip+임베드) → 기사 매칭. 독립 단계('퍼즐 맞추기').

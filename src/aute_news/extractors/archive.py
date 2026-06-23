@@ -25,9 +25,16 @@ class ExpandedFile:
         return self.ext in IMAGE_EXTS
 
 
+# zip 기반이지만 '문서'인 형식 — 사진 번들 zip 으로 오인하면 안 된다.
+_ZIP_DOC_EXT = (".hwpx", ".docx", ".xlsx", ".pptx", ".hwp", ".pdf")
+
+
 def is_zip(filename: str = "", data: bytes | None = None) -> bool:
-    if filename.lower().endswith(".zip"):
+    low = (filename or "").lower()
+    if low.endswith(".zip"):
         return True
+    if low.endswith(_ZIP_DOC_EXT):     # hwpx/docx 등은 내부가 zip(PK)이지만 문서임
+        return False
     return bool(data) and len(data) >= 2 and data[:2] == b"PK"
 
 
