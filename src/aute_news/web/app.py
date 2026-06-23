@@ -110,7 +110,7 @@ def login_post(request: Request, email: str = Form(...), password: str = Form(..
     request.session.update({"user_id": user["id"], "email": user["email"],
                             "tenant_id": tid, "role": role,
                             "is_admin": admin.is_admin(user["email"])})
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/inbox", status_code=303)
 
 
 @app.get("/logout")
