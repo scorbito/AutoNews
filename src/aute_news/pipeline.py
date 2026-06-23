@@ -247,6 +247,9 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     if download_urls:
         ids += _generate_download_articles(conn, message_pk, download_urls, mode, tenant_id)
 
+    # 5) 기사에 배정된 이미지 중 같은 사진은 1장만 (수집은 중복 허용, 기사엔 제외)
+    images.dedup_article_images(conn, message_pk, tenant_id=tenant_id)
+
     if not ids:
         result["skipped"] = "기사화할 내용 없음"
     result["articles"] = ids

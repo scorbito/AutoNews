@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 
@@ -121,6 +122,34 @@ def match_message_images_all(conn, message_pk: int, tenant_id: int = db.DEFAULT_
     return stats
 
 
+def dedup_article_images(conn, message_pk: int, tenant_id: int = db.DEFAULT_TENANT) -> int:
+    """기사에 배정된 이미지 중 시각적으로 같은 사진은 1장만 남기고 나머지 연결 해제.
+
+    수집/저장은 중복 허용 — '기사에 넣을 때'만 중복 제거. 해제된 장수 반환.
+    """
+    arts = conn.execute(
+        """SELECT ar.id FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
+           WHERE a.message_pk=? AND ar.tenant_id=?""", (message_pk, tenant_id)).fetchall()
+    store = get_storage()
+    removed = 0
+    for ar in arts:
+        seen: list = []
+        for im in db.list_article_images(conn, ar["id"], tenant_id=tenant_id):
+            data = store.get(im["path"])
+            if not data:
+                continue
+            ah = _ahash(data)
+            if ah is None:
+                ah = int(hashlib.md5(data).hexdigest()[:16], 16)  # noqa: S324
+            if _is_visual_dup(ah, seen):
+                db.assign_image_article(conn, im["id"], None, tenant_id=tenant_id)
+                removed += 1
+            else:
+                seen.append(ah)
+    conn.commit()
+    return removed
+
+
 def match_message_images(conn, message_pk: int, primary_attachment_id: int,
                          tenant_id: int = db.DEFAULT_TENANT, use_llm: bool = True) -> dict:
     """메시지 전체 이미지(zip+임베드) → 기사 매칭. 독립 단계('퍼즐 맞추기').
@@ -181,6 +210,26 @@ def match_images_to_articles(conn, attachment_id: int, tenant_id: int = db.DEFAU
     return stats
 
 
+def _ahash(data: bytes) -> int | None:
+    """average hash(8x8 그레이스케일) — 해상도·압축이 달라도 같은 사진이면 거의 동일."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            px = list(im.convert("L").resize((8, 8)).getdata())
+    except Exception:  # noqa: BLE001
+        return None
+    avg = sum(px) / len(px)
+    bits = 0
+    for i, p in enumerate(px):
+        if p > avg:
+            bits |= 1 << i
+    return bits
+
+
+def _is_visual_dup(ahash: int, seen: list) -> bool:
+    """seen(aHash 목록) 중 해밍거리 5 이하면 같은 사진으로 본다."""
+    return any(bin(ahash ^ s).count("1") <= 5 for s in seen)
+
+
 def _measure(data: bytes) -> tuple[int, int]:
     try:
         with Image.open(io.BytesIO(data)) as im:
@@ -201,7 +250,7 @@ def _load_classifier(use_gemini: bool):
 
 def _save_one(conn, att_id: int, tenant_id: int, idx: int, data: bytes, ext: str,
               orig_name: str | None, classify, stats: dict, source: str | None = None):
-    """이미지 1장: 크기 필터 → (가능하면)Gemini 분류 → 저장. classify를 반환(실패시 None)."""
+    """이미지 1장: 크기 필터 → (가능하면)Gemini 분류 → 저장. (중복 허용; 기사 배정 때 제거)"""
     w, h = _measure(data)
     if w and h and max(w, h) < _MIN_SIDE:
         stats["skipped_small"] += 1
@@ -242,7 +291,8 @@ def process_zip_images(conn, att_id: int, files, use_gemini: bool = True,
         if not getattr(f, "is_image", False):
             continue
         stats["total"] += 1
-        classify = _save_one(conn, att_id, tenant_id, idx, f.data, f.ext, f.name, classify, stats)
+        classify = _save_one(conn, att_id, tenant_id, idx, f.data, f.ext, f.name,
+                             classify, stats)
     conn.commit()
     return stats
 
