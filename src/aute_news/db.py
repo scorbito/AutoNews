@@ -343,7 +343,10 @@ def mark_article_published(conn, article_id: int, url: str, tenant_id: int = DEF
 
 
 def list_all_articles(conn, status: str | None = None, tenant_id: int = DEFAULT_TENANT) -> list:
-    q = ("SELECT ar.*, m.subject AS email_subject, m.sender AS email_from "
+    q = ("SELECT ar.*, m.id AS email_id, m.subject AS email_subject, "
+         "m.sender AS email_from, m.date AS email_date, "
+         "(SELECT COUNT(*) FROM images i WHERE i.article_id=ar.id AND i.tenant_id=ar.tenant_id "
+         " AND i.selected=1) AS photo_count "
          "FROM articles ar "
          "LEFT JOIN attachments a ON a.id=ar.attachment_id "
          "LEFT JOIN messages m ON m.id=a.message_pk "
@@ -352,7 +355,9 @@ def list_all_articles(conn, status: str | None = None, tenant_id: int = DEFAULT_
     if status and status != "all":
         q += " AND ar.status=?"
         params.append(status)
-    return conn.execute(q + " ORDER BY ar.id DESC", params).fetchall()
+    # 메일별로 묶이도록 메일 우선 정렬, 메일 안에서는 기사 순번
+    return conn.execute(
+        q + " ORDER BY m.id DESC NULLS LAST, ar.sequence_number, ar.id", params).fetchall()
 
 
 def assign_image_article(conn, image_id: int, article_id: int | None,

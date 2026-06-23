@@ -2,7 +2,7 @@
 {% block title %}기사 목록{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between; align-items:center;">
-  <h2 style="margin:0;">기사 <span class="muted">({{ arts|length }}건)</span></h2>
+  <h2 style="margin:0;">기사 <span class="muted">({{ total }}건)</span></h2>
   <div class="row">
     <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
     <a href="/board" style="font-size:13px;">🗞 발행 게시판</a>
@@ -21,19 +21,63 @@
   {% endfor %}
 </div>
 
-<table>
-  <thead><tr><th>#</th><th>제목</th><th>카테고리</th><th>상태</th><th>출처 메일</th></tr></thead>
-  <tbody>
-  {% for a in arts %}
-    <tr>
-      <td>{{ a.id }}</td>
-      <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
-      <td class="muted">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
-      <td><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
-      <td class="muted">{{ a.email_subject or '' }}</td>
-    </tr>
+<form method="post" action="/articles/bulk">
+  <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
+    <label style="font-weight:normal;"><input type="checkbox" id="checkall"> 전체</label>
+    <span class="muted">선택 일괄:</span>
+    <button class="gray" type="submit" name="action" value="review">✓ 검토완료</button>
+    <button class="green" type="submit" name="action" value="publish">🚀 선택 발행</button>
+    <span class="muted" id="selcount">0건 선택</span>
+  </div>
+
+  {% for g in groups %}
+  <div class="card" style="margin-bottom:14px; padding:0; overflow:hidden;">
+    <div class="row" style="justify-content:space-between; background:#eef1f6; padding:10px 14px;">
+      <div>
+        <label style="font-weight:600;">
+          <input type="checkbox" class="grpall"> 📧 {{ g.subject or '(제목 없음)' }}
+        </label>
+        <span class="muted"> · 기사 {{ g.articles|length }}건{% if g.date %} · {{ g.date }}{% endif %}</span>
+      </div>
+    </div>
+    <table style="margin:0;">
+      <thead>
+        <tr><th style="width:34px;"></th><th style="width:40px;">#</th><th>제목</th>
+            <th style="width:90px;">카테고리</th><th style="width:70px;">사진</th><th style="width:80px;">상태</th></tr>
+      </thead>
+      <tbody>
+      {% for a in g.articles %}
+        <tr>
+          <td><input type="checkbox" class="sel" name="ids" value="{{ a.id }}"></td>
+          <td class="muted">{{ a.sequence_number }}</td>
+          <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
+          <td class="muted">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
+          <td class="muted">{% if a.photo_count %}📷 {{ a.photo_count }}{% else %}–{% endif %}</td>
+          <td><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endfor %}
-  </tbody>
-</table>
-{% if not arts %}<p class="muted">아직 기사가 없습니다. <code>python scripts/process.py</code> 로 파이프라인을 돌리세요.</p>{% endif %}
+</form>
+{% if not groups %}<p class="muted">아직 기사가 없습니다. 상단 "📥 메일 수집"으로 시작하세요.</p>{% endif %}
+
+<script>
+  const boxes = () => Array.from(document.querySelectorAll('.sel'));
+  const count = () => {
+    document.getElementById('selcount').textContent =
+      boxes().filter(b => b.checked).length + '건 선택';
+  };
+  document.getElementById('checkall').addEventListener('change', e => {
+    boxes().forEach(b => b.checked = e.target.checked);
+    document.querySelectorAll('.grpall').forEach(g => g.checked = e.target.checked);
+    count();
+  });
+  document.querySelectorAll('.grpall').forEach(g => g.addEventListener('change', e => {
+    e.target.closest('.card').querySelectorAll('.sel').forEach(b => b.checked = e.target.checked);
+    count();
+  }));
+  document.addEventListener('change', e => { if (e.target.classList.contains('sel')) count(); });
+</script>
 {% endblock %}

@@ -219,6 +219,19 @@ def admin_process(request: Request, tid: int):
 
 
 # ── 기사(articles) ────────────────────────────────────
+def _group_by_email(arts: list) -> list:
+    """기사 목록을 출처 메일별 묶음으로(순서 유지). [{subject, date, count, articles:[]}]."""
+    groups, index = [], {}
+    for a in arts:
+        key = a["email_id"]
+        if key not in index:
+            index[key] = len(groups)
+            groups.append({"email_id": key, "subject": a["email_subject"],
+                           "date": a["email_date"], "articles": []})
+        groups[index[key]]["articles"].append(a)
+    return groups
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, status: str = "all"):
     t = _tenant(request)
@@ -228,8 +241,25 @@ def index(request: Request, status: str = "all"):
     conn.close()
     return templates.TemplateResponse(
         request, "articles.html",
-        {"arts": arts, "astatus": ASTATUS, "filters": AFILTERS, "counts": counts,
+        {"groups": _group_by_email(arts), "total": len(arts),
+         "astatus": ASTATUS, "filters": AFILTERS, "counts": counts,
          "active": status, "cats": CATEGORY_CODES, "email": request.session.get("email")})
+
+
+@app.post("/articles/bulk")
+def articles_bulk(request: Request, action: str = Form(...),
+                  ids: Annotated[list[int], Form()] = []):
+    """선택한 기사들을 일괄 검토완료/발행."""
+    t = _tenant(request)
+    conn = db.connect()
+    if action == "review":
+        for aid in ids:
+            db.set_article_status(conn, aid, "reviewed", tenant_id=t)
+    elif action == "publish":
+        for aid in ids:
+            publish_article(conn, aid, tenant_id=t)
+    conn.close()
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/collect")
