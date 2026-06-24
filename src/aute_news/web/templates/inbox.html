@@ -4,6 +4,12 @@
 <h2 style="text-align:center; margin:0 0 16px;">
   {{ '보관함' if archived else '기사함' }} <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
+{% if last_error %}
+<div class="job-banner error" style="justify-content:space-between;">
+  <span>⚠️ {{ last_error }}</span>
+  <a href="/settings" class="btn sm secondary">내 설정 열기</a>
+</div>
+{% endif %}
 
 <div id="jobBanner" class="job-banner" style="display:none;">
   <span class="spinner"></span>

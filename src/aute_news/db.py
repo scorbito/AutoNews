@@ -99,6 +99,26 @@ _CFG_COLS = ("imap_host", "imap_email", "imap_folders", "publisher", "ndsoft_bas
              "pipeline_mode", "collect_enabled", "collect_times", "auto_publish_senders")
 
 
+def set_tenant_error(conn, tenant_id: int, message: str) -> None:
+    """기자 화면에 보일 마지막 오류 저장(best-effort). 컬럼 없으면 조용히 무시."""
+    try:
+        conn.execute("UPDATE tenant_config SET last_error=?, last_error_at=now() WHERE tenant_id=?",
+                     (message, tenant_id))
+        conn.commit()
+    except Exception:  # noqa: BLE001 (배너는 부가기능 — 컬럼 미적용/오류가 본 작업 막지 않게)
+        pass
+
+
+def clear_tenant_error(conn, tenant_id: int) -> None:
+    """성공 시 오류 배너 해제(best-effort)."""
+    try:
+        conn.execute("UPDATE tenant_config SET last_error=NULL, last_error_at=NULL WHERE tenant_id=?",
+                     (tenant_id,))
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def get_tenant_config(conn, tenant_id: int) -> dict | None:
     row = conn.execute("SELECT * FROM tenant_config WHERE tenant_id=?", (tenant_id,)).fetchone()
     if not row:

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import admin, articlegen, auth, db
+from .. import admin, articlegen, auth, db, notify
 from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
@@ -365,6 +365,9 @@ def _message_view(request: Request, msg: str, archived: bool):
         "SELECT id, kind, status, target, "
         "(status='running' AND updated_at > now() - interval '15 minutes') AS fresh_running "
         "FROM jobs WHERE tenant_id=? AND status IN ('running','pending') ORDER BY id", (t,)).fetchall()
+    last_error = None
+    if not archived:                                   # 기사함에만 오류 배너(기자 액션 필요)
+        last_error = (db.get_tenant_config(conn, t) or {}).get("last_error")
     conn.close()
     running = [r for r in job_rows if r["status"] == "running" and r["fresh_running"]]
     active = running[-1] if running else None       # 최신(가장 큰 id) 진행중 작업
@@ -393,7 +396,7 @@ def _message_view(request: Request, msg: str, archived: bool):
         request, "inbox.html",
         {"msgs": msgs, "msg": msg, "total_arts": total_arts, "processing_ids": processing_ids,
          "processing_label": processing_label, "processing_cls": processing_cls,
-         "pending_map": pending_map, "archived": archived,
+         "pending_map": pending_map, "archived": archived, "last_error": last_error,
          "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
@@ -461,8 +464,8 @@ def _execute_job(conn, job) -> None:
                     # 사람이 직접 '기사 생성'을 누른 것 → 트리아지 SKIP 무시하고 강제 생성
                     made += len(process_message(conn, mid, mode="review", tenant_id=tid,
                                                 force=True).get("articles", []))
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as e:  # noqa: BLE001
+                    notify.report_failure("기사 생성", tid, exc=e, detail=f"메일 {mid}: {type(e).__name__}: {e}")
                 done += 1
                 db.update_job(conn, jid, done=done, message=f"기사 생성 {done}/{len(ids)} … 누적 {made}건")
             db.update_job(conn, jid, status="done", message=f"완료 — 메일 {done}건 · 기사 {made}건")
@@ -473,13 +476,14 @@ def _execute_job(conn, job) -> None:
                     res = publish_article(conn, aid, tenant_id=tid)
                     if res and getattr(res, "ok", False):
                         ok += 1
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as e:  # noqa: BLE001
+                    notify.report_failure("발행", tid, exc=e, detail=f"기사 {aid}: {type(e).__name__}: {e}")
                 done += 1
                 db.update_job(conn, jid, done=done, message=f"발행 {done}/{len(ids)} … 성공 {ok}건")
             db.update_job(conn, jid, status="done", message=f"발행 완료 — {ok}/{len(ids)}건")
     except Exception as e:  # noqa: BLE001
         db.update_job(conn, jid, status="error", message=f"{kind} 실패: {type(e).__name__}")
+        notify.report_failure(f"작업({kind})", tid, exc=e)
 
 
 def _drain(tenant_id: int) -> None:

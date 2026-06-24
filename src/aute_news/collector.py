@@ -13,7 +13,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from imap_tools import AND, MailBox
 
-from . import db, images
+try:
+    from imap_tools.errors import MailboxLoginError
+except Exception:  # noqa: BLE001 (버전차 대비 — 못 찾으면 일반 예외로 폴백)
+    class MailboxLoginError(Exception):  # type: ignore
+        pass
+
+from . import db, images, notify
 from .extractors import ExtractError, detect_format, extract_bytes
 from .extractors.archive import IMAGE_EXTS, ExpandedFile, expand_zip, is_zip
 from .storage import get_storage, mime_for
@@ -238,9 +244,18 @@ def collect_for_user(user_id: str) -> dict:
     if not mail or not (mail.get("imap_host") and mail.get("imap_email") and mail.get("imap_password")):
         conn.close()
         return {"user_id": user_id, "skipped": "메일 설정 없음"}
+    tid = mail["tenant_id"]
     try:
-        archive_and_purge(conn, mail["tenant_id"])     # 기존 → 보관함, 오래된 보관건 정리
-        stats = _collect_one_account(conn, mail["tenant_id"], mail)
+        archive_and_purge(conn, tid)                   # 기존 → 보관함, 오래된 보관건 정리
+        stats = _collect_one_account(conn, tid, mail)
+        db.clear_tenant_error(conn, tid)               # 성공 → 오류 배너 해제
+    except MailboxLoginError as e:
+        db.set_tenant_error(conn, tid, "메일 로그인 실패 — 내 설정 ①에서 앱 비밀번호(IMAP)를 확인/갱신하세요.")
+        notify.report_failure("수집: 메일 로그인", tid, exc=e)
+        raise
+    except Exception as e:  # noqa: BLE001
+        notify.report_failure("수집", tid, exc=e)
+        raise
     finally:
         conn.close()
     stats["user_id"] = user_id
@@ -262,7 +277,17 @@ def collect_for_tenant(tenant_id: int, only_enabled: bool = False) -> dict:
             agg = {"tenant_id": tenant_id, "accounts": 0, "new_messages": 0,
                    "attachments": 0, "extracted": 0, "manual": 0, "baselined": 0}
             for m in accounts:
-                s = _collect_one_account(conn, tenant_id, m)
+                try:
+                    s = _collect_one_account(conn, tenant_id, m)
+                    db.clear_tenant_error(conn, tenant_id)     # 성공 → 배너 해제
+                except MailboxLoginError as e:
+                    db.set_tenant_error(conn, tenant_id,
+                                        "메일 로그인 실패 — 내 설정 ①에서 앱 비밀번호(IMAP)를 확인/갱신하세요.")
+                    notify.report_failure("예약수집: 메일 로그인", tenant_id, exc=e)
+                    continue
+                except Exception as e:  # noqa: BLE001
+                    notify.report_failure("예약수집", tenant_id, exc=e)
+                    continue
                 agg["accounts"] += 1
                 for k in ("new_messages", "attachments", "extracted", "manual", "baselined"):
                     agg[k] += s.get(k, 0)

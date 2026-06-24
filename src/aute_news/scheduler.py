@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from . import admin, db
+from . import admin, db, notify
 from .collector import collect_for_tenant
 
 KST = timezone(timedelta(hours=9))
@@ -61,9 +61,13 @@ def run_due(window_min: int = 5) -> list[dict]:
     conn.close()
     results = []
     for tid in ids:
-        collect = collect_for_tenant(tid)   # 자동 모드 테넌트의 메일 계정 전체 수집
-        conn = db.connect()
-        made = admin.process_tenant(conn, tid)
-        conn.close()
-        results.append({"tenant_id": tid, "collect": collect, "articles_made": made})
+        try:
+            collect = collect_for_tenant(tid)   # 자동 모드 테넌트의 메일 계정 전체 수집
+            conn = db.connect()
+            made = admin.process_tenant(conn, tid)
+            conn.close()
+            results.append({"tenant_id": tid, "collect": collect, "articles_made": made})
+        except Exception as e:  # noqa: BLE001 (한 테넌트 실패가 다른 테넌트·cron을 멈추지 않게)
+            notify.report_failure("예약 수집/처리", tid, exc=e)
+            results.append({"tenant_id": tid, "error": type(e).__name__})
     return results
