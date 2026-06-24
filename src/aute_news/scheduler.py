@@ -61,7 +61,7 @@ def run_due(window_min: int = 5) -> list[dict]:
     conn.close()
     results = []
     for tid in ids:
-        collect = collect_for_tenant(tid, only_enabled=True)
+        collect = collect_for_tenant(tid)   # 자동 모드 테넌트의 메일 계정 전체 수집
         conn = db.connect()
         made = admin.process_tenant(conn, tid)
         conn.close()

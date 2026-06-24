@@ -668,14 +668,13 @@ def settings_mail(request: Request, imap_email: str = Form(...),
 
 @app.post("/settings/folders")
 async def settings_folders(request: Request):
-    """선택한 수집 폴더 + 이 계정의 예약 수집 참여 여부 저장."""
+    """선택한 수집 폴더 저장. (예약 수집은 자동 모드 테넌트의 모든 계정을 수집 — 계정별 토글 없음)"""
     form = await request.form()
     folders = ",".join(form.getlist("folders"))
-    enabled = 1 if form.get("collect_enabled") == "1" else 0
     collect_all = 1 if form.get("collect_all") == "1" else 0
     conn = db.connect()
     db.set_user_mail(conn, request.session["user_id"], _tenant(request),
-                     imap_folders=folders, collect_enabled=enabled, collect_all=collect_all)
+                     imap_folders=folders, collect_enabled=1, collect_all=collect_all)
     conn.close()
     return RedirectResponse("/settings", status_code=303)
 

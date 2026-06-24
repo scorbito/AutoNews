@@ -66,11 +66,7 @@
       </label>
       {% endfor %}
     </div>
-    <label style="margin-top:10px;">
-      <input type="checkbox" name="collect_enabled" value="1" {% if mail_enabled %}checked{% endif %}>
-      예약 수집에 이 계정 포함 (자동 모드 시간에 함께 수집)
-    </label>
-    <label style="display:block; margin-top:6px; color:#b35;">
+    <label style="display:block; margin-top:10px; color:#b35;">
       <input type="checkbox" name="collect_all" value="1" {% if mail.collect_all %}checked{% endif %}>
       🧪 테스트: 기간 무시하고 폴더 전체 수집 (날짜 상관없이 모든 메일, 중복은 자동 제외)
     </label>
