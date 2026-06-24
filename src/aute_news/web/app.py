@@ -529,6 +529,9 @@ def _enqueue(request: Request, background: BackgroundTasks, kind: str, total: in
     init = {"collect": "메일 수집 중…", "process": "기사 생성 준비 중…",
             "publish": "발행 준비 중…"}.get(kind, "처리 중…")
     conn = db.connect()
+    if db.job_exists(conn, t, kind, payload):   # 같은 작업이 이미 대기/진행 중 → 중복 적재 방지
+        conn.close()
+        return
     db.create_job(conn, t, request.session.get("user_id"), kind, total=total,
                   message=init, payload=payload, target=target, status="pending")
     conn.close()

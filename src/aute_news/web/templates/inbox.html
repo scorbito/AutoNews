@@ -25,6 +25,7 @@
 {% endif %}
 
 {% for m in msgs %}
+{% set busy = m.id in processing_ids or m.id in pending_map %}
 <div class="card msg-card">
   <div class="msg-head">
     <div class="msg-info">
@@ -63,10 +64,12 @@
   <details class="arts" open>
     <summary>
       <span class="arts-title">기사 {{ m.articles|length }}건</span>
+      {% if not busy %}
       <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()">
         {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
         <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
       </form>
+      {% endif %}
     </summary>
     <table class="msg-arts">
       <tbody>
@@ -80,6 +83,8 @@
           <td style="width:90px;">
             {% if a.status == 'published' %}
               <a href="/board/{{ a.id }}" target="_blank" class="muted" style="font-size:12px;">게시판 ↗</a>
+            {% elif busy %}
+              <span class="muted" style="font-size:12px;">대기/진행중</span>
             {% else %}
               <form method="post" action="/a/{{ a.id }}/publish">
                 <button type="submit" class="publish sm">🚀 발행</button></form>

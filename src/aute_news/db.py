@@ -311,6 +311,13 @@ def claim_next_job(conn, tenant_id: int):
     return row
 
 
+def job_exists(conn, tenant_id: int, kind: str, payload: str) -> bool:
+    """같은 종류·같은 대상(payload) 작업이 이미 대기/진행 중인지 — 중복 적재 방지."""
+    return conn.execute(
+        "SELECT 1 FROM jobs WHERE tenant_id=? AND kind=? AND payload=? "
+        "AND status IN ('pending','running') LIMIT 1", (tenant_id, kind, payload)).fetchone() is not None
+
+
 def has_pending(conn, tenant_id: int) -> bool:
     return conn.execute("SELECT 1 FROM jobs WHERE tenant_id=? AND status='pending' LIMIT 1",
                         (tenant_id,)).fetchone() is not None
