@@ -290,14 +290,54 @@ def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> 
 
 
 # --- 백그라운드 작업(jobs) ---
-def create_job(conn, tenant_id: int, user_id: str | None, kind: str,
-               total: int = 0, message: str = "", target: str = "") -> int:
+def create_job(conn, tenant_id: int, user_id: str | None, kind: str, total: int = 0,
+               message: str = "", target: str = "", payload: str = "",
+               status: str = "pending") -> int:
     row = conn.execute(
-        "INSERT INTO jobs (tenant_id, user_id, kind, status, total, done, message, target) "
-        "VALUES (?,?,?,'running',?,0,?,?) RETURNING id",
-        (tenant_id, user_id, kind, total, message, target)).fetchone()
+        "INSERT INTO jobs (tenant_id, user_id, kind, status, total, done, message, target, payload) "
+        "VALUES (?,?,?,?,?,0,?,?,?) RETURNING id",
+        (tenant_id, user_id, kind, status, total, message, target, payload)).fetchone()
     conn.commit()
     return row["id"]
+
+
+def claim_next_job(conn, tenant_id: int):
+    """대기(pending) 작업 중 가장 오래된 1건을 running 으로 원자적 전환. 없으면 None."""
+    row = conn.execute(
+        "UPDATE jobs SET status='running', updated_at=now() "
+        "WHERE id=(SELECT id FROM jobs WHERE tenant_id=? AND status='pending' ORDER BY id LIMIT 1) "
+        "RETURNING *", (tenant_id,)).fetchone()
+    conn.commit()
+    return row
+
+
+def has_pending(conn, tenant_id: int) -> bool:
+    return conn.execute("SELECT 1 FROM jobs WHERE tenant_id=? AND status='pending' LIMIT 1",
+                        (tenant_id,)).fetchone() is not None
+
+
+def try_drain_lock(conn, tenant_id: int) -> bool:
+    """테넌트별 드레이너 단일화(권고 잠금). 이미 누가 돌리면 False."""
+    return bool(conn.execute("SELECT pg_try_advisory_lock(?) AS g", (tenant_id,)).fetchone()["g"])
+
+
+def drain_unlock(conn, tenant_id: int) -> None:
+    conn.execute("SELECT pg_advisory_unlock(?)", (tenant_id,))
+
+
+def queue_jobs(conn, tenant_id: int) -> list:
+    """사이드바용 — 진행중(running)+대기중(pending), 진행중이 위로."""
+    return conn.execute(
+        "SELECT id, kind, status, total, done, message, target FROM jobs "
+        "WHERE tenant_id=? AND status IN ('running','pending') "
+        "ORDER BY (status='running') DESC, id", (tenant_id,)).fetchall()
+
+
+def cancel_job(conn, tenant_id: int, job_id: int) -> None:
+    """대기(pending) 작업만 취소(진행중은 취소 불가)."""
+    conn.execute("UPDATE jobs SET status='canceled', updated_at=now() "
+                 "WHERE id=? AND tenant_id=? AND status='pending'", (job_id, tenant_id))
+    conn.commit()
 
 
 def update_job(conn, job_id: int, *, done: int | None = None, total: int | None = None,

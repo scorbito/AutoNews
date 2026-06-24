@@ -28,19 +28,22 @@
         {{ m.sender }} · {{ m.date }} ·
         {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
         {% if m.img_count %} · 📷 {{ m.img_count }}{% endif %}
-        {% if m.pipeline %} · <span class="tag s-draft">{{ m.pipeline }}</span>{% endif %}
+        {% if m.pipeline == 'SKIP' %} · <span class="tag s-pending">건너뜀(스팸)</span>{% endif %}
       </div>
     </div>
     <div class="msg-actions row">
       {% if m.id in processing_ids %}
-        <button type="button" class="green sm" disabled><span class="btn-spin"></span> 생성중…</button>
+        <button type="button" class="{{ processing_cls }} sm" disabled><span class="btn-spin"></span> {{ processing_label }}</button>
+      {% elif m.id in pending_map %}
+        <form method="post" action="/jobs/{{ pending_map[m.id].job_id }}/cancel">
+          <button type="submit" class="wait sm" title="클릭하면 대기 취소">⏳ {{ '발행' if pending_map[m.id].kind == 'publish' else '생성' }} 대기중 ✕</button>
+        </form>
       {% elif m.articles %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
           <button type="submit" class="gray sm">↻ 재생성</button></form>
         <form method="post" action="/articles/bulk">
           {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
-          <button type="submit" class="secondary sm" name="action" value="review">✓ 검토완료</button>
-          <button type="submit" class="publish sm" name="action" value="publish">🚀 발행</button>
+          <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
         </form>
       {% else %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
@@ -50,19 +53,30 @@
   </div>
 
   {% if m.articles %}
-  <table class="msg-arts">
-    <tbody>
-    {% for a in m.articles %}
-      <tr>
-        <td class="muted" style="width:30px;">{{ a.sequence_number }}</td>
-        <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
-        <td class="muted" style="width:96px;">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
-        <td class="muted" style="width:60px;">{% if a.photo_count %}📷 {{ a.photo_count }}{% else %}–{% endif %}</td>
-        <td style="width:96px;"><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <details class="arts" open>
+    <summary>기사 {{ m.articles|length }}건</summary>
+    <table class="msg-arts">
+      <tbody>
+      {% for a in m.articles %}
+        <tr>
+          <td class="muted" style="width:30px;">{{ a.sequence_number }}</td>
+          <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a>
+            {% if a.photo_count %}<span class="muted" style="font-size:12px;">📷{{ a.photo_count }}</span>{% endif %}</td>
+          <td class="muted" style="width:96px;">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
+          <td style="width:84px;"><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
+          <td style="width:90px;">
+            {% if a.status == 'published' %}
+              <a href="/board/{{ a.id }}" target="_blank" class="muted" style="font-size:12px;">게시판 ↗</a>
+            {% else %}
+              <form method="post" action="/a/{{ a.id }}/publish">
+                <button type="submit" class="publish sm">🚀 발행</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
   {% else %}
   <div class="muted msg-empty">아직 기사를 만들지 않았습니다 — <b>⚡ 기사 생성</b>을 누르세요.</div>
   {% endif %}
@@ -79,14 +93,24 @@
 {% endif %}
 
 <script>
+  // 액션(생성/발행/취소) 후 새로고침돼도 스크롤 위치 유지 — 맨 위로 안 튀게
+  history.scrollRestoration = 'manual';
+  (function () {
+    const KEY = 'inboxScrollY';
+    const y = sessionStorage.getItem(KEY);
+    if (y !== null) { sessionStorage.removeItem(KEY); window.scrollTo(0, parseInt(y) || 0); }
+    window.addEventListener('beforeunload', () => sessionStorage.setItem(KEY, window.scrollY));
+  })();
+
   // 기사 생성/재생성 클릭 즉시 버튼을 '생성중'으로(리다이렉트 전 잠깐) + 더블클릭 방지
   document.querySelectorAll('.gen-form').forEach(f => f.addEventListener('submit', () => {
     const b = f.querySelector('button');
     if (b) { b.disabled = true; b.innerHTML = '<span class="btn-spin"></span> 생성중…'; }
   }));
 
-  // ── 백그라운드 작업 진행상태 폴링 ──
-  let wasRunning = false;
+  // ── 작업 큐 진행상태 폴링 ──
+  // 실행 중인 job id가 바뀌면(다음 큐 작업 시작) 새로고침해 카드·사이드바를 갱신.
+  let wasRunning = false, lastRunId = null;
   async function pollJob() {
     const b = document.getElementById('jobBanner');
     const msg = document.getElementById('jobMsg');
@@ -94,17 +118,23 @@
     const fill = document.getElementById('jobFill');
     try {
       const j = await (await fetch('/jobs/active', {cache: 'no-store'})).json();
+      const pend = j.pending ? ` · 대기 ${j.pending}건` : '';
       if (j.status === 'running') {
-        wasRunning = true;
+        if (lastRunId !== null && lastRunId !== j.job_id) { location.reload(); return; }
+        lastRunId = j.job_id; wasRunning = true;
         b.className = 'job-banner running'; b.style.display = 'flex';
-        msg.textContent = j.message || '처리 중…';
-        if (j.total > 0) { bar.style.display = 'block'; fill.style.width = Math.round(j.done / j.total * 100) + '%'; }
-        else { bar.style.display = 'none'; }
+        msg.textContent = (j.message || '처리 중…') + pend;
+        bar.style.display = 'block';
+        if (j.total > 1) {  // 건수 아는 작업 → 실제 진행률
+          bar.classList.remove('indet'); fill.style.width = Math.round(j.done / j.total * 100) + '%';
+        } else {            // 수집/단건 → 움직이는 인디케이터
+          bar.classList.add('indet'); fill.style.width = '';
+        }
         setTimeout(pollJob, 1500);
-      } else if (wasRunning && (j.status === 'done' || j.status === 'error')) {
-        b.className = 'job-banner ' + j.status;
+      } else if (wasRunning) {
+        b.className = 'job-banner ' + (j.status === 'error' ? 'error' : 'done');
         b.querySelector('.spinner') && b.querySelector('.spinner').remove();
-        msg.textContent = j.message || (j.status === 'done' ? '완료' : '오류');
+        msg.textContent = j.message || '완료';
         bar.style.display = 'none';
         setTimeout(() => location.reload(), 1500);
       }

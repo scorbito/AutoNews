@@ -47,6 +47,43 @@ def _nav_counts(request: Request) -> dict:
 templates.env.globals["nav_counts"] = _nav_counts
 
 
+def _job_queue(request: Request) -> list:
+    """사이드바 작업 큐(진행중+대기중) + 대상 메일 제목(말줄임용). 실패 시 빈 목록."""
+    tid = request.session.get("tenant_id")
+    if not tid:
+        return []
+    try:
+        conn = db.connect()
+        rows = [dict(r) for r in db.queue_jobs(conn, tid)]
+        # 대상 메시지 제목 일괄 조회
+        all_ids = set()
+        for r in rows:
+            all_ids.update(int(x) for x in (r.get("target") or "").split(",") if x.strip().isdigit())
+        submap = {}
+        if all_ids:
+            ph = ",".join(["?"] * len(all_ids))
+            for m in conn.execute(
+                    f"SELECT id, subject FROM messages WHERE tenant_id=? AND id IN ({ph})",
+                    (tid, *all_ids)).fetchall():
+                submap[m["id"]] = m["subject"] or "(제목 없음)"
+        conn.close()
+        for r in rows:
+            tids = [int(x) for x in (r.get("target") or "").split(",") if x.strip().isdigit()]
+            if not tids:
+                r["subject"] = ""
+            elif len(tids) == 1:
+                r["subject"] = submap.get(tids[0], "")
+            else:
+                first = submap.get(tids[0], "")
+                r["subject"] = f"{first} 외 {len(tids) - 1}건" if first else f"{len(tids)}건"
+        return rows
+    except Exception:  # noqa: BLE001
+        return []
+
+
+templates.env.globals["job_queue"] = _job_queue
+
+
 def _static_ver() -> str:
     """app.css 수정시각 → 캐시 버스팅 버전(브라우저가 옛 CSS 캐시하는 문제 방지)."""
     try:
@@ -301,18 +338,24 @@ def index(request: Request):
 
 
 @app.post("/articles/bulk")
-def articles_bulk(request: Request, action: str = Form(...),
+def articles_bulk(request: Request, background: BackgroundTasks, action: str = Form(...),
                   ids: Annotated[list[int], Form()] = []):
-    """선택한 기사들을 일괄 검토완료/발행."""
+    """검토완료(동기·빠름) / 발행(백그라운드)."""
     t = _tenant(request)
-    conn = db.connect()
+    if not ids:
+        return RedirectResponse("/inbox", status_code=303)
     if action == "review":
+        conn = db.connect()
         for aid in ids:
             db.set_article_status(conn, aid, "reviewed", tenant_id=t)
-    elif action == "publish":
-        for aid in ids:
-            publish_article(conn, aid, tenant_id=t)
-    conn.close()
+        conn.close()
+        return RedirectResponse("/inbox", status_code=303)
+    if action == "publish":
+        conn = db.connect()
+        target = _msg_ids_for_articles(conn, t, list(ids))
+        conn.close()
+        _enqueue(request, background, "publish", len(ids),
+                 payload=",".join(str(i) for i in ids), target=target)
     return RedirectResponse("/inbox", status_code=303)
 
 
@@ -325,10 +368,23 @@ def inbox(request: Request, msg: str = ""):
     arts = db.list_all_articles(conn, "all", tenant_id=t)
     active = db.active_job(conn, t)
     conn.close()
-    # 현재 처리 중인 메시지 id(있으면 그 카드 버튼을 '생성중'으로)
-    processing_ids = set()
-    if active and active["kind"] == "process" and active["target"]:
+    # 현재 처리 중인 메시지 id(있으면 그 카드 버튼을 '생성중/발행중'으로)
+    processing_ids: set = set()
+    processing_label, processing_cls = "생성중…", "green"
+    if active and active["kind"] in ("process", "publish") and active["target"]:
         processing_ids = {int(x) for x in active["target"].split(",") if x.strip().isdigit()}
+        if active["kind"] == "publish":
+            processing_label, processing_cls = "발행중…", "publish"
+    # 대기(pending) 작업의 대상 메일 → 카드에 '대기중(취소)' 버튼
+    conn2 = db.connect()
+    pend_rows = conn2.execute(
+        "SELECT id, kind, target FROM jobs WHERE tenant_id=? AND status='pending' ORDER BY id", (t,)).fetchall()
+    conn2.close()
+    pending_map: dict = {}
+    for j in pend_rows:
+        for x in (j["target"] or "").split(","):
+            if x.strip().isdigit():
+                pending_map.setdefault(int(x), {"job_id": j["id"], "kind": j["kind"]})
     by_msg: dict = {}
     for a in arts:
         by_msg.setdefault(a["email_id"], []).append(a)
@@ -337,7 +393,8 @@ def inbox(request: Request, msg: str = ""):
     return templates.TemplateResponse(
         request, "inbox.html",
         {"msgs": msgs, "msg": msg, "total_arts": len(arts), "processing_ids": processing_ids,
-         "astatus": ASTATUS, "cats": CATEGORY_CODES})
+         "processing_label": processing_label, "processing_cls": processing_cls,
+         "pending_map": pending_map, "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
 @app.get("/messages/{message_id}", response_class=HTMLResponse)
@@ -362,132 +419,172 @@ def message_detail(request: Request, message_id: int):
         request, "message_detail.html", {"m": msg, "atts": atts, "art_count": art_count})
 
 
-# ── 백그라운드 작업 (메일 수집 / 기사 생성) ───────────
-def _run_collect(user_id: str, job_id: int) -> None:
-    from ..collector import collect_for_user
-    conn = db.connect()
+# ── 작업 큐 (수집/생성/발행을 순차 처리) ──────────────
+def _msg_ids_for_articles(conn, tenant_id: int, ids: list[int]) -> str:
+    """기사 id 목록 → 그 기사들이 속한 메시지 id(쉼표). 카드 '발행중' 표시용."""
+    if not ids:
+        return ""
+    ph = ",".join(["?"] * len(ids))
+    rows = conn.execute(
+        f"""SELECT DISTINCT a.message_pk m FROM articles ar
+            JOIN attachments a ON a.id=ar.attachment_id
+            WHERE ar.tenant_id=? AND ar.id IN ({ph}) AND a.message_pk IS NOT NULL""",
+        (tenant_id, *ids)).fetchall()
+    return ",".join(str(r["m"]) for r in rows)
+
+
+def _ids(s: str) -> list[int]:
+    return [int(x) for x in (s or "").split(",") if x.strip().isdigit()]
+
+
+def _execute_job(conn, job) -> None:
+    """큐에서 꺼낸 작업 1건 실행(kind별). 진행률을 갱신하고 done/error 로 마감."""
+    jid, kind, tid = job["id"], job["kind"], job["tenant_id"]
+    ids = _ids(job["payload"])
     try:
-        stats = collect_for_user(user_id)
-        if stats.get("skipped"):
-            msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정을 등록하세요)"
-        elif stats.get("baselined") and not stats.get("new_messages"):
-            msg = "메일함 기준선을 '오늘 0시'로 설정했습니다 — 이후 도착 메일부터 수집됩니다. (오늘 새 메일 없음)"
-        else:
-            msg = f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, 첨부 {stats.get('attachments', 0)}개"
-        db.update_job(conn, job_id, status="done", message=msg)
+        if kind == "collect":
+            from ..collector import collect_for_user
+            stats = collect_for_user(job["user_id"])
+            if stats.get("skipped"):
+                msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정 등록)"
+            elif stats.get("baselined") and not stats.get("new_messages"):
+                msg = "메일함 기준선을 '오늘 0시'로 설정 — 이후 도착분부터 수집. (오늘 새 메일 없음)"
+            else:
+                msg = f"수집 완료 — 새 메일 {stats.get('new_messages', 0)}건, 첨부 {stats.get('attachments', 0)}개"
+            db.update_job(conn, jid, status="done", message=msg)
+        elif kind == "process":
+            from ..pipeline import process_message
+            made = done = 0
+            for mid in ids:
+                try:
+                    made += len(process_message(conn, mid, mode="review", tenant_id=tid).get("articles", []))
+                except Exception:  # noqa: BLE001
+                    pass
+                done += 1
+                db.update_job(conn, jid, done=done, message=f"기사 생성 {done}/{len(ids)} … 누적 {made}건")
+            db.update_job(conn, jid, status="done", message=f"완료 — 메일 {done}건 · 기사 {made}건")
+        elif kind == "publish":
+            ok = done = 0
+            for aid in ids:
+                try:
+                    res = publish_article(conn, aid, tenant_id=tid)
+                    if res and getattr(res, "ok", False):
+                        ok += 1
+                except Exception:  # noqa: BLE001
+                    pass
+                done += 1
+                db.update_job(conn, jid, done=done, message=f"발행 {done}/{len(ids)} … 성공 {ok}건")
+            db.update_job(conn, jid, status="done", message=f"발행 완료 — {ok}/{len(ids)}건")
     except Exception as e:  # noqa: BLE001
-        db.update_job(conn, job_id, status="error", message=f"수집 실패: {type(e).__name__}")
-    finally:
-        conn.close()
+        db.update_job(conn, jid, status="error", message=f"{kind} 실패: {type(e).__name__}")
 
 
-def _run_process(ids: list[int], tenant_id: int, job_id: int) -> None:
-    from ..pipeline import process_message
+def _drain(tenant_id: int) -> None:
+    """테넌트 대기열을 순차 처리. 권고잠금으로 드레이너 단일화, 종료 직전 재확인으로 누락 방지."""
     conn = db.connect()
-    made = done = 0
     try:
-        for mid in ids:
+        while True:
+            if not db.try_drain_lock(conn, tenant_id):
+                return                                   # 다른 드레이너가 처리 중
             try:
-                res = process_message(conn, mid, mode="review", tenant_id=tenant_id)
-                made += len(res.get("articles", []))
-            except Exception:  # noqa: BLE001 (개별 메일 실패는 건너뜀)
-                pass
-            done += 1
-            db.update_job(conn, job_id, done=done,
-                          message=f"기사 생성 {done}/{len(ids)} … 누적 {made}건")
-        db.update_job(conn, job_id, status="done",
-                      message=f"완료 — 메일 {done}건 처리 · 기사 {made}건 생성")
-    except Exception as e:  # noqa: BLE001
-        db.update_job(conn, job_id, status="error", message=f"처리 실패: {type(e).__name__}")
+                while True:
+                    job = db.claim_next_job(conn, tenant_id)
+                    if not job:
+                        break
+                    _execute_job(conn, job)
+            finally:
+                db.drain_unlock(conn, tenant_id)
+            if not db.has_pending(conn, tenant_id):      # 잠금 푼 사이 들어온 작업 회수
+                return
     finally:
         conn.close()
 
 
-def _start_job(request: Request, kind: str, total: int, message: str, target: str = ""):
-    """진행 중 작업이 있으면 막고, 없으면 job 생성. (job_id, busy) 반환."""
+def _enqueue(request: Request, background: BackgroundTasks, kind: str, total: int,
+             payload: str = "", target: str = "") -> None:
+    """작업을 대기열에 넣고 드레이너를 깨운다(이미 돌면 알아서 이어받음)."""
     t = _tenant(request)
+    init = {"collect": "메일 수집 중…", "process": "기사 생성 준비 중…",
+            "publish": "발행 준비 중…"}.get(kind, "처리 중…")
     conn = db.connect()
-    if db.active_job(conn, t):
-        conn.close()
-        return None, True
-    job_id = db.create_job(conn, t, request.session.get("user_id"), kind,
-                           total=total, message=message, target=target)
+    db.create_job(conn, t, request.session.get("user_id"), kind, total=total,
+                  message=init, payload=payload, target=target, status="pending")
     conn.close()
-    return job_id, False
+    background.add_task(_drain, t)
 
 
 @app.post("/collect")
 def collect_now(request: Request, background: BackgroundTasks):
-    """기자 본인 메일함 수집 — 백그라운드 실행, 즉시 응답."""
-    job_id, busy = _start_job(request, "collect", 0, "메일 수집 중…")
-    if busy:
-        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
-    background.add_task(_run_collect, request.session["user_id"], job_id)
+    """기자 본인 메일함 수집 — 큐에 적재."""
+    _enqueue(request, background, "collect", 0)
     return RedirectResponse("/inbox", status_code=303)
 
 
 @app.post("/messages/bulk-process")
 def messages_bulk_process(request: Request, background: BackgroundTasks,
                           ids: Annotated[list[int], Form()] = []):
-    """선택한 메일들을 백그라운드로 일괄 기사 생성."""
     if not ids:
         return RedirectResponse("/inbox", status_code=303)
-    job_id, busy = _start_job(request, "process", len(ids), "기사 생성 준비 중…",
-                              target=",".join(str(i) for i in ids))
-    if busy:
-        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
-    background.add_task(_run_process, list(ids), _tenant(request), job_id)
+    p = ",".join(str(i) for i in ids)
+    _enqueue(request, background, "process", len(ids), payload=p, target=p)
     return RedirectResponse("/inbox", status_code=303)
 
 
 @app.post("/messages/{message_id}/process")
 def message_process(request: Request, message_id: int, background: BackgroundTasks):
-    """메일 1건을 백그라운드로 처리."""
-    job_id, busy = _start_job(request, "process", 1, "기사 생성 중…", target=str(message_id))
-    if busy:
-        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
-    background.add_task(_run_process, [message_id], _tenant(request), job_id)
+    _enqueue(request, background, "process", 1, payload=str(message_id), target=str(message_id))
     return RedirectResponse("/inbox", status_code=303)
 
 
 @app.post("/messages/process-all")
 def messages_process_all(request: Request, background: BackgroundTasks):
-    """아직 기사 안 만든 메일 전체를 백그라운드로 일괄 생성."""
+    """아직 기사 안 만든 메일 전체를 큐에 적재."""
     t = _tenant(request)
     conn = db.connect()
     rows = conn.execute(
         """SELECT m.id FROM messages m WHERE m.tenant_id=? AND NOT EXISTS (
                SELECT 1 FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
                WHERE a.message_pk=m.id) ORDER BY m.id""", (t,)).fetchall()
+    conn.close()
     ids = [r["id"] for r in rows]
     if not ids:
-        conn.close()
         return RedirectResponse("/inbox?msg=처리할 미처리 메일이 없습니다", status_code=303)
-    if db.active_job(conn, t):
-        conn.close()
-        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
-    job_id = db.create_job(conn, t, request.session.get("user_id"), "process",
-                           total=len(ids), message="미처리 메일 기사 생성 준비 중…",
-                           target=",".join(str(i) for i in ids))
-    conn.close()
-    background.add_task(_run_process, ids, t, job_id)
+    p = ",".join(str(i) for i in ids)
+    _enqueue(request, background, "process", len(ids), payload=p, target=p)
     return RedirectResponse("/inbox", status_code=303)
+
+
+@app.post("/jobs/{job_id}/cancel")
+def job_cancel(request: Request, job_id: int):
+    """대기(pending) 작업 취소. 진행중은 취소 불가."""
+    conn = db.connect()
+    db.cancel_job(conn, _tenant(request), job_id)
+    conn.close()
+    back = request.headers.get("referer") or "/inbox"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.get("/jobs/active")
 def jobs_active(request: Request):
-    """진행상태 폴링용 JSON. 멈춘(stale) running 은 오류로 보고."""
+    """폴링용 — 진행중 작업 + 현재 실행 job id + 대기 수. 멈춘 running 은 오류로."""
     t = _tenant(request)
+    conn = db.connect()
+    run = db.active_job(conn, t)
+    pend = conn.execute("SELECT COUNT(*) c FROM jobs WHERE tenant_id=? AND status='pending'",
+                        (t,)).fetchone()["c"]
+    conn.close()
+    if run:
+        return {"status": "running", "job_id": run["id"], "kind": run["kind"],
+                "total": run["total"], "done": run["done"], "message": run["message"],
+                "pending": pend}
     conn = db.connect()
     j = db.latest_job(conn, t)
     conn.close()
     if not j:
-        return {"status": "none"}
+        return {"status": "none", "pending": pend}
     if j["status"] == "running" and j["stale"]:
-        return {"status": "error", "message": "작업이 응답하지 않습니다(시간 초과).",
-                "total": j["total"], "done": j["done"]}
-    return {"status": j["status"], "kind": j["kind"], "total": j["total"],
-            "done": j["done"], "message": j["message"]}
+        return {"status": "error", "message": "작업이 응답하지 않습니다(시간 초과)."}
+    return {"status": j["status"], "message": j["message"], "pending": pend}
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -627,11 +724,13 @@ def article_review(request: Request, article_id: int):
 
 
 @app.post("/a/{article_id}/publish")
-def article_publish(request: Request, article_id: int):
+def article_publish(request: Request, article_id: int, background: BackgroundTasks):
+    """기사 1건 발행 — 큐에 적재. 진행은 기사함에서 표시."""
     conn = db.connect()
-    publish_article(conn, article_id, tenant_id=_tenant(request))
+    target = _msg_ids_for_articles(conn, _tenant(request), [article_id])
     conn.close()
-    return RedirectResponse(f"/a/{article_id}", status_code=303)
+    _enqueue(request, background, "publish", 1, payload=str(article_id), target=target)
+    return RedirectResponse("/inbox", status_code=303)
 
 
 # ── 발행 미리보기 게시판 (테스트/데모용 신문 페이지) ──

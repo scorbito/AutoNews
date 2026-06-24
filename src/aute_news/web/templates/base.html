@@ -36,6 +36,25 @@
         {% endif %}
       </nav>
 
+      {% set q = job_queue(request) %}
+      {% set klabel = {'collect':'메일 수집','process':'기사 생성','publish':'발행'} %}
+      {% if q %}
+      <div class="queue">
+        <div class="nav-label">작업 {{ q|length }}</div>
+        {% for j in q %}
+        <div class="q-item {{ 'q-run' if j.status == 'running' else 'q-wait' }}">
+          {% if j.status == 'running' %}<span class="btn-spin q-spin"></span>{% else %}<span class="q-dot">›</span>{% endif %}
+          <span class="q-label">{{ klabel.get(j.kind, j.kind) }}{% if j.subject %} <span class="q-sub">({{ j.subject }})</span>{% endif %}{% if j.status == 'running' and j.total > 1 %} <span class="muted">{{ j.done }}/{{ j.total }}</span>{% endif %}</span>
+          {% if j.status == 'pending' %}
+          <form method="post" action="/jobs/{{ j.id }}/cancel" class="q-cancel">
+            <button type="submit" title="취소">✕</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <div class="spacer"></div>
 
       <div class="userbox">
