@@ -286,7 +286,9 @@ button[disabled] { opacity: .8; cursor: default; }
 /* ── 반응형 (모바일: 전체 세로형) ─────────────────────── */
 @media (max-width: 820px) {
   html, body { overflow-x: hidden; }
-  .app { grid-template-columns: 1fr; }
+  /* 사이드바는 내용 높이만, 콘텐츠가 나머지 차지 (메뉴줄이 아래로 벌어지지 않게) */
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-content: start; }
+  .sidebar { align-content: flex-start; }
 
   /* 사이드바: 상단 한 줄 — auto_news | 메뉴(가운데) | 메일수집 */
   .sidebar {

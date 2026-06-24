@@ -109,3 +109,31 @@ def process_tenant(conn, tenant_id: int) -> int:
 
 def collect_tenant(tenant_id: int) -> dict:
     return collect_for_tenant(tenant_id)
+
+
+def _delete_supabase_user(user_id: str) -> None:
+    if not (SUPABASE_URL and SERVICE_KEY and user_id):
+        return
+    try:
+        requests.delete(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def delete_tenant(conn, tenant_id: int) -> dict:
+    """신문사(테넌트) + 모든 데이터 + Auth 사용자 + 스토리지 파일 삭제."""
+    from .storage import get_storage
+    keys, user_ids = db.delete_tenant(conn, tenant_id)
+    for uid in user_ids:
+        _delete_supabase_user(uid)
+    storage = get_storage()
+    files = 0
+    for k in keys:
+        try:
+            storage.delete(k)
+            files += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return {"files": files, "users": len(user_ids)}

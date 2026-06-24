@@ -248,16 +248,16 @@ def admin_create(request: Request, name: str = Form(...), email: str = Form(...)
     return RedirectResponse(f"/admin?msg={msg}", status_code=303)
 
 
-@app.post("/admin/tenant/{tid}/user")
-def admin_add_user(request: Request, tid: int, email: str = Form(...), password: str = Form(...)):
+@app.post("/admin/tenant/{tid}/delete")
+def admin_delete_tenant(request: Request, tid: int):
     if not _require_admin(request):
         return HTMLResponse("관리자 전용입니다.", 403)
     conn = db.connect()
     try:
-        admin.add_user(conn, tid, email, password)
-        msg = f"기자 추가: {email} → 신문사 {tid}"
+        res = admin.delete_tenant(conn, tid)
+        msg = f"신문사 {tid} 삭제 (파일 {res['files']}개, 계정 {res['users']}개)"
     except Exception as e:  # noqa: BLE001
-        msg = f"실패: {e}"
+        msg = f"삭제 실패: {e}"
     conn.close()
     return RedirectResponse(f"/admin?msg={msg}", status_code=303)
 
@@ -299,24 +299,6 @@ async def admin_config(request: Request, tid: int):
     db.set_tenant_config(conn, tid, **kw)
     conn.close()
     return RedirectResponse(f"/admin?msg=테넌트 {tid} 설정 저장", status_code=303)
-
-
-@app.post("/admin/collect/{tid}")
-def admin_collect(request: Request, tid: int):
-    if not _require_admin(request):
-        return HTMLResponse("관리자 전용입니다.", 403)
-    stats = admin.collect_tenant(tid)
-    return RedirectResponse(f"/admin?msg=수집: {stats}", status_code=303)
-
-
-@app.post("/admin/process/{tid}")
-def admin_process(request: Request, tid: int):
-    if not _require_admin(request):
-        return HTMLResponse("관리자 전용입니다.", 403)
-    conn = db.connect()
-    made = admin.process_tenant(conn, tid)
-    conn.close()
-    return RedirectResponse(f"/admin?msg=처리 완료: 기사 {made}건 생성", status_code=303)
 
 
 # ── 기사(articles) ────────────────────────────────────

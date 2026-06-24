@@ -437,6 +437,26 @@ def purge_archived_messages(conn, tenant_id: int, days: int = 7) -> list[str]:
     return keys
 
 
+def delete_tenant(conn, tenant_id: int) -> tuple[list[str], list[str]]:
+    """테넌트와 모든 하위 데이터 삭제(FK 순서). (스토리지 키, user_id 목록) 반환."""
+    keys: list[str] = []
+    for r in conn.execute(
+            "SELECT path FROM attachments WHERE tenant_id=? AND path IS NOT NULL", (tenant_id,)).fetchall():
+        keys.append(r["path"])
+    for r in conn.execute(
+            "SELECT path FROM images WHERE tenant_id=? AND path IS NOT NULL", (tenant_id,)).fetchall():
+        keys.append(r["path"])
+    user_ids = [r["user_id"] for r in conn.execute(
+        "SELECT user_id FROM tenant_users WHERE tenant_id=?", (tenant_id,)).fetchall()]
+    # 자식 → 부모 순서로 삭제 (FK 제약)
+    for tbl in ("images", "articles", "drafts", "attachments", "messages",
+                "folder_state", "jobs", "user_mail_config", "tenant_config", "tenant_users"):
+        conn.execute(f"DELETE FROM {tbl} WHERE tenant_id=?", (tenant_id,))
+    conn.execute("DELETE FROM tenants WHERE id=?", (tenant_id,))
+    conn.commit()
+    return keys, user_ids
+
+
 def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> None:
     """재처리용 — 합성 첨부(weblink/body, 다운로드 파일)와 딸린 기사·이미지 제거.
 
