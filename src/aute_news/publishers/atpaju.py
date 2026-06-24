@@ -37,12 +37,13 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
 
 # ============================================================
-# 하드 안전잠금: 실제 사이트 게시를 코드 레벨에서 전면 차단.
-# True 인 동안에는 .env 의 ATPAJU_LIVE=1 이어도 절대 게시되지 않고
-# dry-run(로그인·기사ID 확인까지만)으로만 동작한다.
-# 정말로 실제 발행을 허용할 때만, 직접 이 값을 False 로 바꿀 것.
+# 발행 비상 정지(킬스위치): 운영에서도 임시로 실제 게시를 막고 싶을 때
+# 환경변수 PUBLISH_DISABLED=1 로 켜면, live 여도 dry-run(로그인·idxno 확인까지만)만.
+# 평소엔 발행기 선택 단계(get_publisher)에서 '운영서버 + CMS설정'일 때만 live 로 생성되므로
+# 로컬/CMS미설정에서는 애초에 atpaju 발행기가 만들어지지 않아 실제 발행이 불가능하다.
 # ============================================================
-HARD_DISABLE_LIVE = True
+def _kill_switch() -> bool:
+    return os.getenv("PUBLISH_DISABLED", "") in ("1", "true", "True")
 
 
 def _split_subtitle(content: str) -> tuple[str, str]:
@@ -62,7 +63,7 @@ def _split_subtitle(content: str) -> tuple[str, str]:
 class AtpajuPublisher(Publisher):
     name = "atpaju"
 
-    def __init__(self, config: dict | None = None) -> None:
+    def __init__(self, config: dict | None = None, live: bool | None = None) -> None:
         # 테넌트 설정 우선, 없으면 .env 폴백(레거시/CLI)
         c = config or {}
         self.base = (c.get("ndsoft_base_url") or os.getenv("NDSOFT_BASE_URL", DEFAULT_BASE)).rstrip("/")
@@ -74,8 +75,8 @@ class AtpajuPublisher(Publisher):
         # 저장 후 '승인요청'(작성중→승인요청)까지 자동으로 보낼지. 기본 OFF(기자 검토 후 직접).
         self.auto_submit = (bool(c.get("cms_auto_submit"))
                             or os.getenv("ATPAJU_AUTO_SUBMIT", "") in ("1", "true", "True"))
-        # 실제 게시 스위치는 전역(.env)으로 유지 + HARD_DISABLE_LIVE 안전잠금
-        self.live = os.getenv("ATPAJU_LIVE", "") in ("1", "true", "True")
+        # live: 발행기 선택 단계에서 결정(운영+CMS설정이면 True). 미지정 시 .env 폴백(CLI/레거시).
+        self.live = live if live is not None else (os.getenv("ATPAJU_LIVE", "") in ("1", "true", "True"))
 
     def _login(self, s: requests.Session) -> None:
         s.headers.update({"User-Agent": UA})
@@ -190,8 +191,8 @@ class AtpajuPublisher(Publisher):
             if not idxno:
                 return PublishResult(False, message="로그인 실패 또는 idxno 추출 실패")
 
-            if HARD_DISABLE_LIVE or not self.live:
-                reason = "하드잠금(HARD_DISABLE_LIVE)" if HARD_DISABLE_LIVE else "ATPAJU_LIVE 미설정"
+            if _kill_switch() or not self.live:
+                reason = "킬스위치(PUBLISH_DISABLED)" if _kill_switch() else "live 아님"
                 return PublishResult(
                     True, url=f"(dry-run) idxno={idxno} 발급 성공 — 실제 게시 차단됨",
                     message=f"dry-run: 로그인·기사ID까지만 검증. 등록 안 함 ({reason})")

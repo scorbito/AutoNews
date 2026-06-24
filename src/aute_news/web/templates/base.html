@@ -25,6 +25,9 @@
         <a href="/inbox" class="nav-item {% if p == '/' or p.startswith('/inbox') or p.startswith('/messages') or p.startswith('/a/') %}active{% endif %}">
           <span class="ico">📰</span> 기사함
           {% if nc.messages is defined %}<span class="nav-count">{{ nc.messages }}</span>{% endif %}</a>
+        <a href="/archive" class="nav-item {% if p.startswith('/archive') %}active{% endif %}">
+          <span class="ico">🗄</span> 보관함
+          {% if nc.archived is defined %}<span class="nav-count">{{ nc.archived }}</span>{% endif %}</a>
         <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
           <span class="ico">🗞</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">

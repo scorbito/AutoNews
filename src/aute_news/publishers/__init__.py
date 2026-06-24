@@ -10,14 +10,32 @@ from .base import Publisher, PublishResult
 from .export_html import HtmlExportPublisher
 
 
+def is_production() -> bool:
+    """실제 운영 서버인지. APP_ENV=production 또는 Railway 환경이면 운영."""
+    if os.getenv("APP_ENV", "").lower() in ("production", "prod"):
+        return True
+    return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID")
+                or os.getenv("RAILWAY_SERVICE_ID"))
+
+
+def cms_configured(config: dict | None = None) -> bool:
+    """이 테넌트가 실제 CMS(atpaju) 발행에 필요한 설정을 갖췄는지."""
+    c = config or {}
+    return (str(c.get("publisher") or "").lower() == "atpaju"
+            and bool(c.get("cms_user")) and bool(c.get("cms_password"))
+            and bool(c.get("ndsoft_base_url")))
+
+
 def get_publisher(config: dict | None = None) -> Publisher:
-    """발행기 선택. config(테넌트 설정)의 publisher 우선, 없으면 .env PUBLISHER.
-    기본은 안전한 HTML 내보내기. 'atpaju' 면 ND소프트 발행기(config 로 사이트별 설정)."""
-    ptype = (config or {}).get("publisher") or os.getenv("PUBLISHER", "html")
-    if (ptype or "html").lower() == "atpaju":
+    """발행기 선택.
+
+    - 실제 운영서버 + CMS 설정 완료 → atpaju 실발행
+    - 로컬이거나 CMS 미설정 → HTML(발행 게시판 미리보기). 실수로도 실제 발행 안 됨.
+    """
+    if is_production() and cms_configured(config):
         from .atpaju import AtpajuPublisher
-        return AtpajuPublisher(config)
+        return AtpajuPublisher(config, live=True)
     return HtmlExportPublisher()
 
 
-__all__ = ["Publisher", "PublishResult", "get_publisher"]
+__all__ = ["Publisher", "PublishResult", "get_publisher", "is_production", "cms_configured"]

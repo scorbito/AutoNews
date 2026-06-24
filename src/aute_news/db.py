@@ -370,10 +370,12 @@ def latest_job(conn, tenant_id: int):
         "FROM jobs WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tenant_id,)).fetchone()
 
 
-def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> list:
-    """수집된 메일 목록 + 요약(첨부 종류·이미지·기사 수·트리아지)."""
+def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100,
+                  archived: bool = False) -> list:
+    """수집된 메일 목록 + 요약. archived=False면 활성(기사함), True면 보관함."""
+    cond = "m.archived_at IS NOT NULL" if archived else "m.archived_at IS NULL"
     return conn.execute(
-        """SELECT m.id, m.subject, m.sender, m.date, m.pipeline, m.account, m.folder,
+        f"""SELECT m.id, m.subject, m.sender, m.date, m.pipeline, m.account, m.folder, m.archived_at,
                   (SELECT COUNT(*) FROM attachments a WHERE a.message_pk=m.id) att_count,
                   (SELECT string_agg(DISTINCT a.format, ',') FROM attachments a
                      WHERE a.message_pk=m.id) att_formats,
@@ -381,8 +383,51 @@ def list_messages(conn, tenant_id: int = DEFAULT_TENANT, limit: int = 100) -> li
                      WHERE a.message_pk=m.id AND i.selected=1) img_count,
                   (SELECT COUNT(*) FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
                      WHERE a.message_pk=m.id) art_count
-           FROM messages m WHERE m.tenant_id=? ORDER BY m.id DESC LIMIT ?""",
+           FROM messages m WHERE m.tenant_id=? AND {cond}
+           ORDER BY m.id DESC LIMIT ?""",
         (tenant_id, limit)).fetchall()
+
+
+def archive_active_messages(conn, tenant_id: int) -> int:
+    """활성 메일을 모두 보관 처리(메일 수집 시 호출). 보관된 건수 반환."""
+    cur = conn.execute(
+        "UPDATE messages SET archived_at=now() WHERE tenant_id=? AND archived_at IS NULL", (tenant_id,))
+    conn.commit()
+    return cur.rowcount
+
+
+def purge_archived_messages(conn, tenant_id: int, days: int = 7) -> list[str]:
+    """보관 days일 지난 메일/기사/이미지(+첨부) 삭제. 삭제한 저장소 키 목록 반환(파일 정리용)."""
+    rows = conn.execute(
+        "SELECT id FROM messages WHERE tenant_id=? AND archived_at IS NOT NULL "
+        "AND archived_at < now() - make_interval(days => ?)", (tenant_id, days)).fetchall()
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return []
+    ph = ",".join(["?"] * len(ids))
+    keys: list[str] = []
+    for r in conn.execute(
+            f"SELECT path FROM attachments WHERE tenant_id=? AND message_pk IN ({ph}) AND path IS NOT NULL",
+            (tenant_id, *ids)).fetchall():
+        keys.append(r["path"])
+    for r in conn.execute(
+            f"""SELECT i.path FROM images i JOIN attachments a ON a.id=i.attachment_id
+                WHERE i.tenant_id=? AND a.message_pk IN ({ph}) AND i.path IS NOT NULL""",
+            (tenant_id, *ids)).fetchall():
+        keys.append(r["path"])
+    conn.execute(
+        f"""DELETE FROM images WHERE tenant_id=? AND attachment_id IN
+            (SELECT id FROM attachments WHERE tenant_id=? AND message_pk IN ({ph}))""",
+        (tenant_id, tenant_id, *ids))
+    conn.execute(
+        f"""DELETE FROM articles WHERE tenant_id=? AND attachment_id IN
+            (SELECT id FROM attachments WHERE tenant_id=? AND message_pk IN ({ph}))""",
+        (tenant_id, tenant_id, *ids))
+    conn.execute(f"DELETE FROM attachments WHERE tenant_id=? AND message_pk IN ({ph})",
+                 (tenant_id, *ids))
+    conn.execute(f"DELETE FROM messages WHERE tenant_id=? AND id IN ({ph})", (tenant_id, *ids))
+    conn.commit()
+    return keys
 
 
 def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> None:

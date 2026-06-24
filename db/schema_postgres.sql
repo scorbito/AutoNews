@@ -83,9 +83,11 @@ CREATE TABLE messages (
     pipeline           TEXT,
     triage_confidence  REAL,
     triage_reason      TEXT,
+    archived_at        TIMESTAMPTZ,                  -- NULL=활성(기사함), 값=보관함(7일 후 삭제)
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, message_id)
 );
+CREATE INDEX idx_messages_archived  ON messages(tenant_id, archived_at);
 
 CREATE TABLE attachments (
     id              BIGSERIAL PRIMARY KEY,

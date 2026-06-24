@@ -2,7 +2,7 @@
 {% block title %}기사함{% endblock %}
 {% block body %}
 <h2 style="text-align:center; margin:0 0 16px;">
-  기사함 <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
+  {{ '보관함' if archived else '기사함' }} <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 <div id="jobBanner" class="job-banner" style="display:none;">
@@ -11,6 +11,10 @@
   <div id="jobBar" class="job-bar" style="display:none;"><div id="jobFill" class="job-fill"></div></div>
 </div>
 
+{% if archived %}
+<p class="muted" style="margin:6px 0 16px;">
+  🗄 <b>메일 수집</b> 시 기사함의 이전 메일·기사가 이곳으로 옮겨집니다. <b>7일</b> 후 자동 삭제됩니다.</p>
+{% else %}
 <div class="row" style="gap:10px; margin-bottom:6px;">
   <form method="post" action="/messages/process-all">
     <button type="submit" class="green">⚡ 미처리 전체 기사 생성</button>
@@ -18,6 +22,7 @@
 </div>
 <p class="muted" style="margin:6px 0 16px;">
   ① 왼쪽 <b>📥 메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
+{% endif %}
 
 {% for m in msgs %}
 <div class="card msg-card">
@@ -38,23 +43,31 @@
         <form method="post" action="/jobs/{{ pending_map[m.id].job_id }}/cancel">
           <button type="submit" class="wait sm" title="클릭하면 대기 취소">⏳ {{ '발행' if pending_map[m.id].kind == 'publish' else '생성' }} 대기중 ✕</button>
         </form>
-      {% elif m.articles %}
+      {% else %}
+        {% if m.articles %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
           <button type="submit" class="gray sm">↻ 재생성</button></form>
-        <form method="post" action="/articles/bulk">
-          {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
-          <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
-        </form>
-      {% else %}
+        {% else %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
           <button type="submit" class="green sm">⚡ 기사 생성</button></form>
+        {% endif %}
+        {% if not archived %}
+        <form method="post" action="/messages/{{ m.id }}/archive">
+          <button type="submit" class="secondary sm">🗄 보관함 이동</button></form>
+        {% endif %}
       {% endif %}
     </div>
   </div>
 
   {% if m.articles %}
   <details class="arts" open>
-    <summary>기사 {{ m.articles|length }}건</summary>
+    <summary>
+      <span class="arts-title">기사 {{ m.articles|length }}건</span>
+      <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()">
+        {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
+        <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
+      </form>
+    </summary>
     <table class="msg-arts">
       <tbody>
       {% for a in m.articles %}
@@ -84,12 +97,16 @@
 {% endfor %}
 
 {% if not msgs %}
+{% if archived %}
+<div class="empty">보관된 메일이 없습니다.<br>기사함에서 <b>📥 메일 수집</b> 시 이전 메일이 이곳으로 옮겨집니다.</div>
+{% else %}
 <div class="empty">
   수집된 메일이 없습니다.<br>아래 버튼으로 메일을 가져오세요.
   <form method="post" action="/collect" style="display:block; margin-top:16px;">
     <button type="submit" style="padding:11px 24px; font-size:15px;">📥 메일 수집</button>
   </form>
 </div>
+{% endif %}
 {% endif %}
 
 <script>

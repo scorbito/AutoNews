@@ -61,7 +61,8 @@ Supabase 대시보드 → **Project Settings → Database → Connection string 
 | `PIPELINE_MODE` | `review` |
 | `STORAGE_BACKEND` | `supabase` |
 | `STORAGE_BUCKET` | `files` |
-| `ATPAJU_LIVE` | (실발행 켤 때만 `1`. 기본 비움 = dry-run) |
+| `APP_ENV` | `production` (이게 있으면 운영서버로 인식 → CMS 설정된 테넌트는 실제 발행) |
+| `PUBLISH_DISABLED` | (비상 정지용. `1` 이면 운영이어도 실제 발행 안 함=dry-run. 평소 비움) |
 
 4. **Settings → Networking → Generate Domain** 으로 공개 HTTPS 주소 발급.
 5. **Deploy** → 주소 접속 → `/login`·`/signup` 확인.
@@ -95,10 +96,12 @@ Supabase 대시보드 → **Project Settings → Database → Connection string 
 
 ---
 
-## 4. 실발행(atpaju) 안전장치
-- 코드에 `HARD_DISABLE_LIVE`(atpaju.py) 하드 잠금이 있음 — **이게 True 면 ATPAJU_LIVE 와 무관하게 실발행 안 함**.
-- 실제 발행을 켜려면: 잠금 해제 + `ATPAJU_LIVE=1` + 테넌트별 CMS 설정(내 설정 ④) + (옵션)자동 승인요청.
-- 운영 안정화 전까지는 **dry-run 유지 권장**.
+## 4. 발행 동작 (환경 자동 판별)
+발행기는 **환경 + CMS 설정**으로 자동 결정됩니다(코드 잠금 수정 불필요):
+- **로컬**(APP_ENV 없음) → 항상 **HTML(발행 게시판 미리보기)**. 실수로도 실제 발행 안 됨.
+- **운영서버(`APP_ENV=production`) + 테넌트 CMS 설정 완료**(내 설정 ④: 발행기 atpaju + 사이트주소 + 아이디 + 비번) → **실제 atpaju 발행**(승인요청까지, `cms_auto_submit` ON 시).
+- **운영 + CMS 미설정** → HTML(게시판).
+- 비상 정지: `PUBLISH_DISABLED=1` 넣으면 운영이어도 dry-run.
 
 ---
 

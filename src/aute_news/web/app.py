@@ -36,10 +36,12 @@ def _nav_counts(request: Request) -> dict:
         return {}
     try:
         conn = db.connect()
-        msgs = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=?", (tid,)).fetchone()["c"]
-        arts = conn.execute("SELECT COUNT(*) c FROM articles WHERE tenant_id=?", (tid,)).fetchone()["c"]
+        msgs = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=? AND archived_at IS NULL",
+                            (tid,)).fetchone()["c"]
+        arch = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=? AND archived_at IS NOT NULL",
+                            (tid,)).fetchone()["c"]
         conn.close()
-        return {"messages": msgs, "articles": arts}
+        return {"messages": msgs, "archived": arch}
     except Exception:  # noqa: BLE001 (개수 표시는 부가기능 — 실패해도 화면은 떠야 함)
         return {}
 
@@ -359,12 +361,22 @@ def articles_bulk(request: Request, background: BackgroundTasks, action: str = F
     return RedirectResponse("/inbox", status_code=303)
 
 
+@app.get("/archive", response_class=HTMLResponse)
+def archive(request: Request, msg: str = ""):
+    """보관함 — 메일 수집 시 옮겨진 이전 메일·기사(7일 후 자동 삭제)."""
+    return _message_view(request, msg, archived=True)
+
+
 @app.get("/inbox", response_class=HTMLResponse)
 def inbox(request: Request, msg: str = ""):
-    """기사함 — 수집 메일 + 그 메일이 생성한 기사를 한 화면에."""
+    """기사함 — 새로 수집된 메일 + 그 메일이 생성한 기사."""
+    return _message_view(request, msg, archived=False)
+
+
+def _message_view(request: Request, msg: str, archived: bool):
     t = _tenant(request)
     conn = db.connect()
-    msgs = db.list_messages(conn, tenant_id=t)
+    msgs = db.list_messages(conn, tenant_id=t, archived=archived)
     arts = db.list_all_articles(conn, "all", tenant_id=t)
     active = db.active_job(conn, t)
     conn.close()
@@ -388,13 +400,16 @@ def inbox(request: Request, msg: str = ""):
     by_msg: dict = {}
     for a in arts:
         by_msg.setdefault(a["email_id"], []).append(a)
+    total_arts = 0
     for m in msgs:
         m["articles"] = by_msg.get(m["id"], [])
+        total_arts += len(m["articles"])
     return templates.TemplateResponse(
         request, "inbox.html",
-        {"msgs": msgs, "msg": msg, "total_arts": len(arts), "processing_ids": processing_ids,
+        {"msgs": msgs, "msg": msg, "total_arts": total_arts, "processing_ids": processing_ids,
          "processing_label": processing_label, "processing_cls": processing_cls,
-         "pending_map": pending_map, "astatus": ASTATUS, "cats": CATEGORY_CODES})
+         "pending_map": pending_map, "archived": archived,
+         "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
 @app.get("/messages/{message_id}", response_class=HTMLResponse)
@@ -444,6 +459,13 @@ def _execute_job(conn, job) -> None:
     try:
         if kind == "collect":
             from ..collector import collect_for_user
+            # 수집 전: 기존 활성 메일/기사를 보관함으로 이동 + 7일 지난 보관건 정리
+            db.archive_active_messages(conn, tid)
+            for key in db.purge_archived_messages(conn, tid, days=7):
+                try:
+                    get_storage().delete(key)
+                except Exception:  # noqa: BLE001 (파일 정리는 베스트에포트)
+                    pass
             stats = collect_for_user(job["user_id"])
             if stats.get("skipped"):
                 msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정 등록)"
@@ -552,6 +574,18 @@ def messages_process_all(request: Request, background: BackgroundTasks):
     p = ",".join(str(i) for i in ids)
     _enqueue(request, background, "process", len(ids), payload=p, target=p)
     return RedirectResponse("/inbox", status_code=303)
+
+
+@app.post("/messages/{message_id}/archive")
+def message_archive(request: Request, message_id: int):
+    """이 메일을 보관함으로 이동(수동)."""
+    t = _tenant(request)
+    conn = db.connect()
+    conn.execute("UPDATE messages SET archived_at=now() WHERE id=? AND tenant_id=? AND archived_at IS NULL",
+                 (message_id, t))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(request.headers.get("referer") or "/inbox", status_code=303)
 
 
 @app.post("/jobs/{job_id}/cancel")

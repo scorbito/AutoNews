@@ -242,6 +242,7 @@ pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; line-
 .msg-card details.arts > summary::before { content: '▸'; color: var(--gray-400); }
 .msg-card details.arts[open] > summary::before { content: '▾'; }
 .msg-card details.arts > summary:hover { background: var(--gray-50); color: var(--gray-700); }
+.msg-card details.arts > summary .arts-pub { margin-left: auto; }
 .msg-card details.arts[open] > summary { border-bottom: 1px solid var(--border); }
 .msg-arts { border-radius: 0; }
 .msg-arts td { padding: 10px 16px; }

@@ -28,6 +28,7 @@ class Storage(ABC):
     def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None: ...
     @abstractmethod
     def get(self, key: str) -> bytes | None: ...
+    def delete(self, key: str) -> None: ...
 
 
 class LocalStorage(Storage):
@@ -43,6 +44,11 @@ class LocalStorage(Storage):
     def get(self, key) -> bytes | None:
         p = self.base / key
         return p.read_bytes() if p.exists() else None
+
+    def delete(self, key) -> None:
+        p = self.base / key
+        if p.exists():
+            p.unlink()
 
 
 class SupabaseStorage(Storage):
@@ -77,6 +83,10 @@ class SupabaseStorage(Storage):
         r = requests.get(f"{self.url}/storage/v1/object/{self.bucket}/{key}",
                          headers=self._h(), timeout=60)
         return r.content if r.status_code == 200 else None
+
+    def delete(self, key) -> None:
+        requests.delete(f"{self.url}/storage/v1/object/{self.bucket}/{key}",
+                        headers=self._h(), timeout=30)  # 없어도 무시
 
 
 _active: Storage | None = None
