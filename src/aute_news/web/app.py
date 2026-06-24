@@ -473,7 +473,9 @@ def _execute_job(conn, job) -> None:
             made = done = 0
             for mid in ids:
                 try:
-                    made += len(process_message(conn, mid, mode="review", tenant_id=tid).get("articles", []))
+                    # 사람이 직접 '기사 생성'을 누른 것 → 트리아지 SKIP 무시하고 강제 생성
+                    made += len(process_message(conn, mid, mode="review", tenant_id=tid,
+                                                force=True).get("articles", []))
                 except Exception:  # noqa: BLE001
                     pass
                 done += 1

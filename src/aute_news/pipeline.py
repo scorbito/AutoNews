@@ -180,7 +180,8 @@ def _generate_download_articles(conn, message_pk: int, urls: list[str], mode: st
 
 
 def process_message(conn, message_pk: int, mode: str | None = None,
-                    tenant_id: int = db.DEFAULT_TENANT) -> dict:
+                    tenant_id: int = db.DEFAULT_TENANT, force: bool = False) -> dict:
+    """force=True 면 트리아지 SKIP 을 무시하고 강제 기사화(사람이 직접 '기사 생성' 누른 경우)."""
     mode = mode or _mode()
     msg = conn.execute("SELECT * FROM messages WHERE id=? AND tenant_id=?",
                        (message_pk, tenant_id)).fetchone()
@@ -200,6 +201,14 @@ def process_message(conn, message_pk: int, mode: str | None = None,
                 "download_links": dl,
                 "article_links": links.pick_article_urls(
                     [c for c in cand if c["url"] not in set(dl)])}
+
+    # 보도자료 문서(hwp/pdf/docx 등)가 첨부돼 있으면 스킵하지 않는다(자동·수동 공통).
+    # 첨부 문서 = 보도자료 신호 → 제목이 '테스트'라도 LLM 오판으로 버리지 않게.
+    has_doc = any(detect_format(a["filename"] or "") in _DOC_FORMATS for a in atts)
+    if force or has_doc:
+        plan["skip"] = False
+    if force:                       # 사람이 직접 생성 → 본문도 기사 후보로
+        plan["body_is_article"] = True
 
     db.set_triage(conn, message_pk, "SKIP" if plan["skip"] else "ROUTED", None,
                   plan.get("reason", ""), tenant_id=tenant_id)
