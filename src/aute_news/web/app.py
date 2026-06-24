@@ -36,12 +36,12 @@ def _nav_counts(request: Request) -> dict:
         return {}
     try:
         conn = db.connect()
-        msgs = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=? AND archived_at IS NULL",
-                            (tid,)).fetchone()["c"]
-        arch = conn.execute("SELECT COUNT(*) c FROM messages WHERE tenant_id=? AND archived_at IS NOT NULL",
-                            (tid,)).fetchone()["c"]
+        row = conn.execute(
+            "SELECT COUNT(*) FILTER (WHERE archived_at IS NULL) active, "
+            "COUNT(*) FILTER (WHERE archived_at IS NOT NULL) arch "
+            "FROM messages WHERE tenant_id=?", (tid,)).fetchone()
         conn.close()
-        return {"messages": msgs, "archived": arch}
+        return {"messages": row["active"], "archived": row["arch"]}
     except Exception:  # noqa: BLE001 (개수 표시는 부가기능 — 실패해도 화면은 떠야 함)
         return {}
 
@@ -360,8 +360,14 @@ def _message_view(request: Request, msg: str, archived: bool):
     conn = db.connect()
     msgs = db.list_messages(conn, tenant_id=t, archived=archived)
     arts = db.list_all_articles(conn, "all", tenant_id=t)
-    active = db.active_job(conn, t)
+    # 진행중+대기중 작업을 한 번에 조회(연결·왕복 절감) → 아래서 active/pending 으로 분리
+    job_rows = conn.execute(
+        "SELECT id, kind, status, target, "
+        "(status='running' AND updated_at > now() - interval '15 minutes') AS fresh_running "
+        "FROM jobs WHERE tenant_id=? AND status IN ('running','pending') ORDER BY id", (t,)).fetchall()
     conn.close()
+    running = [r for r in job_rows if r["status"] == "running" and r["fresh_running"]]
+    active = running[-1] if running else None       # 최신(가장 큰 id) 진행중 작업
     # 현재 처리 중인 메시지 id(있으면 그 카드 버튼을 '생성중/발행중'으로)
     processing_ids: set = set()
     processing_label, processing_cls = "생성중…", "green"
@@ -370,10 +376,7 @@ def _message_view(request: Request, msg: str, archived: bool):
         if active["kind"] == "publish":
             processing_label, processing_cls = "발행중…", "publish"
     # 대기(pending) 작업의 대상 메일 → 카드에 '대기중(취소)' 버튼
-    conn2 = db.connect()
-    pend_rows = conn2.execute(
-        "SELECT id, kind, target FROM jobs WHERE tenant_id=? AND status='pending' ORDER BY id", (t,)).fetchall()
-    conn2.close()
+    pend_rows = [r for r in job_rows if r["status"] == "pending"]
     pending_map: dict = {}
     for j in pend_rows:
         for x in (j["target"] or "").split(","):

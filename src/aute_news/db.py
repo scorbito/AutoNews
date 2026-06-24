@@ -32,10 +32,15 @@ def _translate(sql: str) -> str:
 
 
 class _Conn:
-    """sqlite3.Connection 과 유사한 표면(execute/commit/close)을 제공하는 래퍼."""
+    """sqlite3.Connection 과 유사한 표면(execute/commit/close)을 제공하는 래퍼.
 
-    def __init__(self, raw: psycopg.Connection) -> None:
+    close()는 연결을 닫지 않고 풀에 반납한다(풀에서 받은 경우). 그래서 호출부의
+    `conn = db.connect() ... conn.close()` 패턴이 그대로 풀 재사용으로 동작한다.
+    """
+
+    def __init__(self, raw: psycopg.Connection, pool=None) -> None:
         self._raw = raw
+        self._pool = pool
 
     def execute(self, sql: str, params=None):
         cur = self._raw.cursor()
@@ -46,18 +51,45 @@ class _Conn:
         self._raw.commit()
 
     def close(self) -> None:
-        self._raw.close()
+        if self._pool is not None:
+            pool, self._pool = self._pool, None
+            try:
+                pool.putconn(self._raw)          # 닫지 않고 풀에 반납(핸드셰이크 재사용)
+            except Exception:                    # noqa: BLE001 — 반납 실패 시 실제 종료
+                try:
+                    self._raw.close()
+                except Exception:                # noqa: BLE001
+                    pass
+        else:
+            self._raw.close()
 
     def cursor(self):
         return self._raw.cursor()
 
 
+_pool = None
+
+
+def _get_pool():
+    """프로세스당 하나의 연결 풀(lazy). 원격 DB 연결 핸드셰이크 비용 제거."""
+    global _pool
+    if _pool is None:
+        url = os.getenv("DATABASE_URL")
+        if not url:
+            raise RuntimeError("DATABASE_URL 이 .env 에 없습니다 (Supabase 연결 문자열).")
+        from psycopg_pool import ConnectionPool
+        _pool = ConnectionPool(
+            url, min_size=1, max_size=int(os.getenv("DB_POOL_MAX", "10")),
+            max_idle=120, max_lifetime=1800, timeout=15,
+            kwargs={"autocommit": True, "row_factory": dict_row}, open=True)
+        import atexit
+        atexit.register(_pool.close)
+    return _pool
+
+
 def connect() -> _Conn:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL 이 .env 에 없습니다 (Supabase 연결 문자열).")
-    raw = psycopg.connect(url, autocommit=True, row_factory=dict_row, connect_timeout=15)
-    return _Conn(raw)
+    raw = _get_pool().getconn()
+    return _Conn(raw, _get_pool())
 
 
 # --- 테넌트 설정(메일/CMS, 비밀번호 암호화) ---

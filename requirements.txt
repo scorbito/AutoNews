@@ -27,6 +27,7 @@ requests>=2.33.1
 
 # DB (Supabase PostgreSQL)
 psycopg[binary]>=3.2
+psycopg-pool>=3.2         # 연결 풀(원격 DB 핸드셰이크 비용 제거)
 
 # 테넌트 비밀번호 암호화
 cryptography>=43
