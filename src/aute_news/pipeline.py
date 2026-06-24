@@ -187,6 +187,13 @@ def process_message(conn, message_pk: int, mode: str | None = None,
                        (message_pk, tenant_id)).fetchone()
     if not msg:
         return {"error": "메일 없음"}
+    # 자동 모드라도 '자동 발행 발신자' 목록이 있으면 일치하는 발신자만 자동, 나머지는 검토(수동).
+    # 목록이 비어 있으면 기존대로 전체 자동.
+    if mode == "auto":
+        cfg = db.get_tenant_config(conn, tenant_id) or {}
+        allow = [t.strip().lower() for t in (cfg.get("auto_publish_senders") or "").split(",") if t.strip()]
+        if allow and not any(tok in (msg["sender"] or "").lower() for tok in allow):
+            mode = "review"
     atts = db.message_attachments(conn, message_pk, tenant_id=tenant_id)
     body = msg["body_text"] or ""
 

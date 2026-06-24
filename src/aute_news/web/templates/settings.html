@@ -94,11 +94,19 @@
     <div class="muted" style="font-size:12px;">
       · 특정시각: <code>09:00,15:00</code> (KST, 쉼표 구분)<br>
       · 일정 간격: <code>30m</code>(30분마다) · <code>60m</code>(1시간마다)</div>
+
+    <label>자동 발행 발신자 <span class="muted">(비우면 자동 모드 시 전체 자동 발행)</span></label>
+    <input type="text" name="auto_publish_senders" value="{{ auto_publish_senders }}"
+           placeholder="press@paju.go.kr, paju.go.kr, 경기도의회">
+    <div class="muted" style="font-size:12px;">
+      여기 적은 발신자의 메일만 <b>자동 발행</b>되고, 그 외 메일은 기사화만 되어 <b>기사함에서 직접 발행</b>합니다.<br>
+      이메일 전체·도메인·기관명 일부 모두 가능 (쉼표 구분, 보내는 사람에 포함되면 일치).</div>
     <div class="row"><button type="submit">💾 저장</button></div>
   </form>
   <p class="muted" style="margin-top:12px;">
     · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
-    · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화·발행됩니다.
+    · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화됩니다.
+    발행은 위 <b>자동 발행 발신자</b>가 비어 있으면 전체 자동, 채우면 그 발신자만 자동(나머지는 검토 후 수동).
   </p>
 </div>
 
