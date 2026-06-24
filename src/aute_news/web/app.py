@@ -25,7 +25,7 @@ from ..storage import get_storage, mime_for
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
-app = FastAPI(title="aute_news 기자 검토")
+app = FastAPI(title="뉴스플로우 AI 기자 검토")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 

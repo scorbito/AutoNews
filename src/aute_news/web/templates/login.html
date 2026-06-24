@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>로그인 — auto_news</title>
+  <title>로그인 — 뉴스플로우 AI</title>
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
   <style>
@@ -26,10 +26,10 @@
 </head>
 <body>
   <div class="box">
-    <h1>📰 auto_news</h1>
-    <p class="sub">신문사 계정으로 로그인</p>
+    <h1>📰 뉴스플로우 AI</h1>
+    <p class="sub">기자 계정으로 로그인</p>
     {% if error == "1" %}<div class="err">이메일 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}
-    {% if error == "2" %}<div class="err">이 계정에 신문사가 배정되지 않았습니다. 관리자에게 문의하세요.</div>{% endif %}
+    {% if error == "2" %}<div class="err">이 계정이 아직 등록되지 않았습니다. 관리자에게 문의하세요.</div>{% endif %}
     <form method="post" action="/login">
       <label>이메일</label>
       <input type="email" name="email" required autofocus>
@@ -37,7 +37,7 @@
       <input type="password" name="password" required>
       <button type="submit">로그인</button>
     </form>
-    <p class="alt">계정이 없나요? <a href="/signup">신문사 가입하기</a></p>
+    <p class="alt">계정이 없나요? <a href="/signup">기자 가입하기</a></p>
   </div>
 </body>
 </html>

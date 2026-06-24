@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>회원가입 — auto_news</title>
+  <title>회원가입 — 뉴스플로우 AI</title>
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
   <style>
@@ -29,15 +29,15 @@
 </head>
 <body>
   <div class="box">
-    <h1>📰 auto_news 가입</h1>
-    <p class="sub">신문사 계정을 직접 만드세요</p>
+    <h1>📰 뉴스플로우 AI 가입</h1>
+    <p class="sub">기자 계정을 직접 만드세요</p>
     <div class="steps">가입 → 로그인 → 메일 연결 → 수집 → 발행<br>모든 단계를 직접 설정할 수 있습니다.</div>
     {% if error == "exists" %}<div class="err">이미 가입된 이메일입니다. 로그인해 주세요.</div>{% endif %}
     {% if error == "pw" %}<div class="err">비밀번호는 6자 이상이어야 합니다.</div>{% endif %}
     {% if error == "mismatch" %}<div class="err">비밀번호가 서로 일치하지 않습니다.</div>{% endif %}
     {% if error == "fail" %}<div class="err">가입에 실패했습니다. 잠시 후 다시 시도해 주세요.</div>{% endif %}
     <form method="post" action="/signup">
-      <label>신문사 이름</label>
+      <label>매체명</label>
       <input type="text" name="paper" required autofocus placeholder="예) 파주신문">
       <label>로그인 이메일</label>
       <input type="email" name="email" required placeholder="id@example.com">
