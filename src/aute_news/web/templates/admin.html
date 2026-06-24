@@ -70,8 +70,9 @@
         <strong style="font-size:13px;">발행(CMS)</strong>
         <label>발행기</label>
         <select name="publisher">
-          <option value="html">html (내보내기)</option>
-          <option value="atpaju" {% if t.publisher=='atpaju' %}selected{% endif %}>atpaju (ND소프트)</option>
+          <option value="html" {% if not t.publisher or t.publisher=='html' %}selected{% endif %}>html (내보내기)</option>
+          <option value="atpaju" {% if t.publisher=='atpaju' %}selected{% endif %}>ND소프트 CMS</option>
+          <option value="wordpress" {% if t.publisher=='wordpress' %}selected{% endif %}>워드프레스</option>
         </select>
         <label>사이트 주소</label><input type="text" name="ndsoft_base_url" placeholder="https://www.atpaju.com">
         <label>CMS 아이디</label><input type="text" name="cms_user" placeholder="evahoba">

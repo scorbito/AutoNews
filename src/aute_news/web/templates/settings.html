@@ -117,9 +117,14 @@
     <label>발행 방식</label>
     <select name="publisher">
       <option value="html" {% if publisher=='html' %}selected{% endif %}>내보내기(HTML) — CMS 없이 미리보기만</option>
-      <option value="atpaju" {% if publisher=='atpaju' %}selected{% endif %}>atpaju (ND소프트 CMS)</option>
+      <option value="atpaju" {% if publisher=='atpaju' %}selected{% endif %}>ND소프트 CMS</option>
+      <option value="wordpress" {% if publisher=='wordpress' %}selected{% endif %}>워드프레스 (WordPress)</option>
     </select>
-    <div class="muted" style="font-size:12px;">ND소프트 기반 신문사 CMS를 쓰면 atpaju를 선택하세요.</div>
+    <div class="muted" style="font-size:12px;">
+      · <b>ND소프트</b> 기반 신문사면 ND소프트 CMS<br>
+      · <b>워드프레스</b> 사이트면 wordpress — 아래 아이디는 WP 사용자명, 비밀번호는
+      <b>응용 프로그램 비밀번호</b>(WP 사용자 → 프로필 → 응용 프로그램 비밀번호에서 발급),
+      섹션코드 칸엔 기본 <b>카테고리 ID(숫자)</b>를 넣으세요(비우면 기본).</div>
 
     <div id="cms-fields" style="margin-top:10px;">
       <label>사이트 주소</label>

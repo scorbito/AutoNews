@@ -19,20 +19,28 @@ def is_production() -> bool:
 
 
 def cms_configured(config: dict | None = None) -> bool:
-    """이 테넌트가 실제 CMS(atpaju) 발행에 필요한 설정을 갖췄는지."""
+    """이 테넌트가 실제 CMS 발행에 필요한 설정(사이트·아이디·비번)을 갖췄는지.
+
+    atpaju(ND소프트)·wordpress 모두 같은 3개 필드(ndsoft_base_url·cms_user·cms_password)를 쓴다.
+    """
     c = config or {}
-    return (str(c.get("publisher") or "").lower() == "atpaju"
-            and bool(c.get("cms_user")) and bool(c.get("cms_password"))
+    if str(c.get("publisher") or "").lower() not in ("atpaju", "wordpress"):
+        return False
+    return (bool(c.get("cms_user")) and bool(c.get("cms_password"))
             and bool(c.get("ndsoft_base_url")))
 
 
 def get_publisher(config: dict | None = None) -> Publisher:
     """발행기 선택.
 
-    - 실제 운영서버 + CMS 설정 완료 → atpaju 실발행
+    - 실제 운영서버 + CMS 설정 완료 → 발행기(atpaju / wordpress) 실발행
     - 로컬이거나 CMS 미설정 → HTML(발행 게시판 미리보기). 실수로도 실제 발행 안 됨.
     """
     if is_production() and cms_configured(config):
+        pub = str((config or {}).get("publisher") or "").lower()
+        if pub == "wordpress":
+            from .wordpress import WordPressPublisher
+            return WordPressPublisher(config)
         from .atpaju import AtpajuPublisher
         return AtpajuPublisher(config, live=True)
     return HtmlExportPublisher()
