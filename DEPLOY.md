@@ -67,8 +67,10 @@ Supabase 대시보드 → **Project Settings → Database → Connection string 
 4. **Settings → Networking → Generate Domain** 으로 공개 HTTPS 주소 발급.
 5. **Deploy** → 주소 접속 → `/login`·`/signup` 확인.
 
-> web 서비스 시작 명령은 `railway.json` 에 이미 지정됨:
+> web 서비스 시작 명령은 **Procfile**(`web:`)에서 옴:
 > `uvicorn aute_news.web.app:app --host 0.0.0.0 --port $PORT --app-dir src`
+> ⚠️ `railway.json` 에는 startCommand 를 두지 않는다 — web/cron 이 같은 repo 라
+> 거기에 박으면 cron 도 uvicorn 으로 실행돼 버린다. 시작 명령은 **서비스별로** 지정.
 
 ---
 
@@ -77,8 +79,9 @@ Supabase 대시보드 → **Project Settings → Database → Connection string 
 1. 같은 프로젝트에서 **New → GitHub Repo**(동일 저장소) 로 서비스 하나 더 추가 → 이름 `cron`.
 2. cron 서비스 **Variables** 는 web 과 동일하게(같은 DB/키) — Railway 의 **Shared Variables** 로 묶으면 편함.
 3. cron 서비스 **Settings → Deploy**:
-   - **Start Command**: `python scripts/run_scheduled.py --window 5`
+   - **Custom Start Command**: `python scripts/run_scheduled.py --window 5`
    - **Cron Schedule**: `*/5 * * * *` (5분마다) — `--window` 값과 맞출 것.
+   - **Healthcheck Path: 비움** (cron 은 웹서버가 아니라 한 번 돌고 종료 → 헬스체크 실패 방지)
    - (공개 도메인 불필요)
 4. 저장 → Railway 가 5분마다 실행, 그 시각에 예약(`collect_times`)이 걸린 테넌트만 수집·처리.
 
