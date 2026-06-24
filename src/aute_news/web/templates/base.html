@@ -17,9 +17,9 @@
     <aside class="sidebar">
       <a href="/inbox" class="brand"><span class="logo">📰</span> auto_news</a>
 
-      <form method="post" action="/collect" class="collect">
-        <button type="submit">📥 메일 수집</button>
-      </form>
+      <div class="collect">
+        <button type="button" onclick="openCollectConfirm()">📥 메일 수집</button>
+      </div>
 
       <nav class="nav">
         <a href="/inbox" class="nav-item {% if p == '/' or p.startswith('/inbox') or p.startswith('/messages') or p.startswith('/a/') %}active{% endif %}">
@@ -72,5 +72,23 @@
 
     <main class="content">{% block body %}{% endblock %}</main>
   </div>
+
+  <!-- 메일 수집 확인 모달 -->
+  <div id="collectConfirm" class="modal-ov" onclick="if(event.target===this)closeCollectConfirm()">
+    <div class="modal">
+      <h3 style="margin:0 0 10px;">📥 메일 수집</h3>
+      <p class="muted" style="margin:0 0 20px; line-height:1.7; font-size:14px;">
+        새로운 메일을 수집하면 <b style="color:var(--gray-800);">기사함의 기존 메일·기사가 보관함으로 이동</b>합니다. 계속할까요?</p>
+      <div class="row" style="justify-content:flex-end; gap:8px;">
+        <button type="button" class="secondary" onclick="closeCollectConfirm()">취소</button>
+        <form method="post" action="/collect"><button type="submit">확인</button></form>
+      </div>
+    </div>
+  </div>
+  <script>
+    function openCollectConfirm() { document.getElementById('collectConfirm').style.display = 'flex'; }
+    function closeCollectConfirm() { document.getElementById('collectConfirm').style.display = 'none'; }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCollectConfirm(); });
+  </script>
 </body>
 </html>

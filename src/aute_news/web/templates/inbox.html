@@ -107,9 +107,9 @@
 {% else %}
 <div class="empty">
   수집된 메일이 없습니다.<br>아래 버튼으로 메일을 가져오세요.
-  <form method="post" action="/collect" style="display:block; margin-top:16px;">
-    <button type="submit" style="padding:11px 24px; font-size:15px;">📥 메일 수집</button>
-  </form>
+  <div style="margin-top:16px;">
+    <button type="button" onclick="openCollectConfirm()" style="padding:11px 24px; font-size:15px;">📥 메일 수집</button>
+  </div>
 </div>
 {% endif %}
 {% endif %}
