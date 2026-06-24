@@ -459,13 +459,7 @@ def _execute_job(conn, job) -> None:
     try:
         if kind == "collect":
             from ..collector import collect_for_user
-            # 수집 전: 기존 활성 메일/기사를 보관함으로 이동 + 7일 지난 보관건 정리
-            db.archive_active_messages(conn, tid)
-            for key in db.purge_archived_messages(conn, tid, days=7):
-                try:
-                    get_storage().delete(key)
-                except Exception:  # noqa: BLE001 (파일 정리는 베스트에포트)
-                    pass
+            # 보관 이동·정리는 collect_for_user 내부에서 수행(web·cron 동일 동작)
             stats = collect_for_user(job["user_id"])
             if stats.get("skipped"):
                 msg = f"수집 불가: {stats['skipped']} (내 설정에서 메일 계정 등록)"

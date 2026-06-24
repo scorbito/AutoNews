@@ -96,7 +96,7 @@ def process_tenant(conn, tenant_id: int) -> int:
     mode = cfg.get("pipeline_mode") or "review"
     rows = conn.execute(
         """SELECT m.id FROM messages m
-           WHERE m.tenant_id=? AND NOT EXISTS (
+           WHERE m.tenant_id=? AND m.archived_at IS NULL AND NOT EXISTS (
                SELECT 1 FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
                WHERE a.message_pk=m.id)
            ORDER BY m.id""", (tenant_id,)).fetchall()

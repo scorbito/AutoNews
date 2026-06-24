@@ -218,6 +218,19 @@ def _collect_one_account(conn, tenant_id: int, mail: dict) -> dict:
                             collect_all=bool(mail.get("collect_all")))
 
 
+def archive_and_purge(conn, tenant_id: int, days: int = 7) -> None:
+    """수집 직전 호출 — 기존 활성 메일/기사를 보관함으로 이동 + 보관 days일 지난 건 삭제(파일 포함).
+
+    web(수동) / cron(예약) 어느 경로로 수집해도 동일하게 '수집=새 배치, 이전은 보관함' 동작.
+    """
+    db.archive_active_messages(conn, tenant_id)
+    for key in db.purge_archived_messages(conn, tenant_id, days=days):
+        try:
+            get_storage().delete(key)
+        except Exception:  # noqa: BLE001 (파일 정리는 베스트에포트)
+            pass
+
+
 def collect_for_user(user_id: str) -> dict:
     """기자 본인 메일함에서 수집(user_mail_config)."""
     conn = db.connect()
@@ -226,6 +239,7 @@ def collect_for_user(user_id: str) -> dict:
         conn.close()
         return {"user_id": user_id, "skipped": "메일 설정 없음"}
     try:
+        archive_and_purge(conn, mail["tenant_id"])     # 기존 → 보관함, 오래된 보관건 정리
         stats = _collect_one_account(conn, mail["tenant_id"], mail)
     finally:
         conn.close()
@@ -242,6 +256,7 @@ def collect_for_tenant(tenant_id: int, only_enabled: bool = False) -> dict:
     accounts = [m for m in db.list_tenant_mail_accounts(conn, tenant_id, only_enabled)
                 if m.get("imap_host") and m.get("imap_email") and m.get("imap_password")]
     try:
+        archive_and_purge(conn, tenant_id)             # 예약 수집도 동일하게 보관·정리
         if accounts:
             per = []
             agg = {"tenant_id": tenant_id, "accounts": 0, "new_messages": 0,
