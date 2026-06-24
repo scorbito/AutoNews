@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ a.headline or '기사' }}{% endblock %}
 {% block body %}
-<p><a href="/">← 기사 목록</a>
+<p><a href="/inbox">← 기사함</a>
    · 상태 <span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span>
    {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}
    {% if a.status == 'published' %}· <a href="/board/{{ a.id }}" target="_blank">🗞 게시판에서 보기</a>{% endif %}</p>
@@ -10,7 +10,7 @@
   <!-- 좌: 편집 -->
   <div class="card">
     <h3>기사 편집</h3>
-    <form method="post" action="/a/{{ a.id }}/save">
+    <form id="editform" method="post" action="/a/{{ a.id }}/save">
       <label>제목</label>
       <input type="text" name="headline" value="{{ a.headline or '' }}">
       <label>부제</label>
@@ -23,9 +23,9 @@
       </select>
       <label>본문 (HTML)</label>
       <textarea name="content_html">{{ a.content_html or '' }}</textarea>
-      <div class="row"><button type="submit">💾 저장</button></div>
     </form>
-    <div class="row">
+    <div class="row" style="margin-top:12px;">
+      <button type="submit" form="editform">💾 저장</button>
       <form method="post" action="/a/{{ a.id }}/review"><button class="gray" type="submit">✓ 검토완료</button></form>
       <form method="post" action="/a/{{ a.id }}/publish"><button class="publish" type="submit">🚀 발행</button></form>
     </div>

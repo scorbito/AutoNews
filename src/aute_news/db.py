@@ -291,11 +291,11 @@ def list_articles(conn, attachment_id: int, tenant_id: int = DEFAULT_TENANT) -> 
 
 # --- 백그라운드 작업(jobs) ---
 def create_job(conn, tenant_id: int, user_id: str | None, kind: str,
-               total: int = 0, message: str = "") -> int:
+               total: int = 0, message: str = "", target: str = "") -> int:
     row = conn.execute(
-        "INSERT INTO jobs (tenant_id, user_id, kind, status, total, done, message) "
-        "VALUES (?,?,?,'running',?,0,?) RETURNING id",
-        (tenant_id, user_id, kind, total, message)).fetchone()
+        "INSERT INTO jobs (tenant_id, user_id, kind, status, total, done, message, target) "
+        "VALUES (?,?,?,'running',?,0,?,?) RETURNING id",
+        (tenant_id, user_id, kind, total, message, target)).fetchone()
     conn.commit()
     return row["id"]
 

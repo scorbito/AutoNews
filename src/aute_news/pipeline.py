@@ -24,7 +24,9 @@ _DOC_FORMATS = ("hwp", "hwpx", "pdf", "docx", "doc")
 
 
 def _safe(s: str) -> str:
-    return "".join(c if c.isalnum() or c in "._-" else "_" for c in (s or ""))[:80]
+    # 저장소 키용 ASCII-안전(한글/@ 등은 '_'). isalnum()은 한글도 True라 ASCII로 한정.
+    return "".join(c if (c.isascii() and (c.isalnum() or c in "._-")) else "_"
+                   for c in (s or ""))[:80] or "file"
 
 
 def _mode() -> str:

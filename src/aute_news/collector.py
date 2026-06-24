@@ -40,7 +40,13 @@ ACCOUNTS = {
 
 
 def _safe_name(s: str) -> str:
-    return "".join(c if c.isalnum() or c in "._-" else "_" for c in s)
+    """저장소 키용 ASCII-안전 변환. 한글/@/공백 등은 '_'로(Supabase 키 제약).
+
+    isalnum()은 한글도 True라 ASCII로 한정해야 Supabase 'InvalidKey'를 피한다.
+    원본 파일명은 DB(attachments.filename)에 그대로 보존되므로 키만 안전화한다.
+    """
+    out = "".join(c if (c.isascii() and (c.isalnum() or c in "._-")) else "_" for c in (s or ""))
+    return out or "file"
 
 
 # 도메인 → IMAP 호스트 추정 (UI 자동완성용)
@@ -89,6 +95,60 @@ def list_imap_folders(host: str, email: str, password: str) -> list[dict]:
                 for f in mb.folder.list()]
 
 
+def _store_attachment(conn, tenant_id: int, account: str, uid: int, pk: int, att, stats: dict) -> None:
+    """첨부 1건을 저장소에 올리고 형식별로 처리(zip 풀기/이미지/문서추출)."""
+    fmt = detect_format(att.filename)
+    key = f"attachments/{tenant_id}/{_safe_name(account)}/{uid}_{_safe_name(att.filename)}"
+    get_storage().put(key, att.payload, mime_for(fmt))
+    stats["attachments"] += 1
+
+    # ZIP 첨부: '코드가 푼다' — 압축을 풀어 사진을 파일명 보존해 저장.
+    if is_zip(att.filename, att.payload):
+        files = []
+        try:
+            files = [f for f in expand_zip(att.payload) if f.is_image]
+        except Exception:  # noqa: BLE001 (손상 zip 등)
+            pass
+        att_id = db.insert_attachment(
+            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
+            format="zip", path=key, size=len(att.payload),
+            extracted_text=None, extract_status="done" if files else "manual")
+        if files:
+            images.process_zip_images(conn, att_id, files, tenant_id=tenant_id)
+            stats["extracted"] += 1
+        else:
+            stats["manual"] += 1
+        return
+
+    # 이미지 첨부(jpg/png 등): 이미지로 저장(원본 파일명 보존) → 기사 매칭 대상
+    ext = att.filename.rsplit(".", 1)[-1].lower() if "." in att.filename else ""
+    if ext in IMAGE_EXTS:
+        att_id = db.insert_attachment(
+            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
+            format=ext, path=key, size=len(att.payload),
+            extracted_text=None, extract_status="done")
+        images.process_zip_images(
+            conn, att_id, [ExpandedFile(att.filename, att.payload, ext)], tenant_id=tenant_id)
+        stats["extracted"] += 1
+        return
+
+    extracted_text, status, draft = None, "pending", None
+    try:
+        draft = extract_bytes(att.payload, att.filename)
+        extracted_text, status = draft.body_text, "done"
+        stats["extracted"] += 1
+    except ExtractError:
+        status = "manual"
+        stats["manual"] += 1
+
+    att_id = db.insert_attachment(
+        conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
+        format=fmt, path=key, size=len(att.payload),
+        extracted_text=extracted_text, extract_status=status)
+    if draft and draft.images:
+        images.process_images(conn, att_id, draft, tenant_id=tenant_id)
+
+
 def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                      password: str, folders: list[str], batch_limit: int = 200,
                      collect_all: bool = False) -> dict:
@@ -135,59 +195,14 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                     continue
                 stats["new_messages"] += 1
 
+                # 첨부 1건이 실패해도 나머지 메일/첨부는 계속 (한 건 때문에 전체 중단 X)
                 for att in msg.attachments:
-                    fmt = detect_format(att.filename)
-                    key = f"attachments/{tenant_id}/{account}/{uid}_{_safe_name(att.filename)}"
-                    get_storage().put(key, att.payload, mime_for(fmt))
-                    stats["attachments"] += 1
-
-                    # ZIP 첨부: '코드가 푼다' — 압축을 풀어 사진을 파일명 보존해 저장.
-                    # (어느 사진이 어느 기사인지 매칭은 이후 LLM 단계의 몫)
-                    if is_zip(att.filename, att.payload):
-                        files = []
-                        try:
-                            files = [f for f in expand_zip(att.payload) if f.is_image]
-                        except Exception:  # noqa: BLE001 (손상 zip 등)
-                            pass
-                        att_id = db.insert_attachment(
-                            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
-                            format="zip", path=key, size=len(att.payload),
-                            extracted_text=None, extract_status="done" if files else "manual")
-                        if files:
-                            images.process_zip_images(conn, att_id, files, tenant_id=tenant_id)
-                            stats["extracted"] += 1
-                        else:
-                            stats["manual"] += 1
-                        continue
-
-                    # 이미지 첨부(jpg/png 등): 이미지로 저장(원본 파일명 보존) → 기사 매칭 대상
-                    ext = att.filename.rsplit(".", 1)[-1].lower() if "." in att.filename else ""
-                    if ext in IMAGE_EXTS:
-                        att_id = db.insert_attachment(
-                            conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
-                            format=ext, path=key, size=len(att.payload),
-                            extracted_text=None, extract_status="done")
-                        images.process_zip_images(
-                            conn, att_id, [ExpandedFile(att.filename, att.payload, ext)],
-                            tenant_id=tenant_id)
-                        stats["extracted"] += 1
-                        continue
-
-                    extracted_text, status, draft = None, "pending", None
                     try:
-                        draft = extract_bytes(att.payload, att.filename)
-                        extracted_text, status = draft.body_text, "done"
-                        stats["extracted"] += 1
-                    except ExtractError:
-                        status = "manual"
-                        stats["manual"] += 1
-
-                    att_id = db.insert_attachment(
-                        conn, tenant_id=tenant_id, message_pk=pk, filename=att.filename,
-                        format=fmt, path=key, size=len(att.payload),
-                        extracted_text=extracted_text, extract_status=status)
-                    if draft and draft.images:
-                        images.process_images(conn, att_id, draft, tenant_id=tenant_id)
+                        _store_attachment(conn, tenant_id, account, uid, pk, att, stats)
+                    except Exception as e:  # noqa: BLE001
+                        import sys
+                        print(f"[collect] 첨부 처리 실패 uid={uid} '{att.filename}': "
+                              f"{type(e).__name__}: {str(e)[:160]}", file=sys.stderr, flush=True)
 
             if not collect_all:                  # 전체수집 모드는 기준선을 남기지 않음
                 db.set_last_uid(conn, account, folder, max_uid, tenant_id=tenant_id)

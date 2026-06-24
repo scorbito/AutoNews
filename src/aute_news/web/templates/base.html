@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ static_ver }}">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -17,13 +17,14 @@
     <aside class="sidebar">
       <a href="/inbox" class="brand"><span class="logo">📰</span> auto_news</a>
 
+      <form method="post" action="/collect" class="collect">
+        <button type="submit">📥 메일 수집</button>
+      </form>
+
       <nav class="nav">
-        <a href="/inbox" class="nav-item {% if p.startswith('/inbox') or p.startswith('/messages') %}active{% endif %}">
-          <span class="ico">📨</span> 수집함
+        <a href="/inbox" class="nav-item {% if p == '/' or p.startswith('/inbox') or p.startswith('/messages') or p.startswith('/a/') %}active{% endif %}">
+          <span class="ico">📰</span> 기사함
           {% if nc.messages is defined %}<span class="nav-count">{{ nc.messages }}</span>{% endif %}</a>
-        <a href="/" class="nav-item {% if p == '/' or p.startswith('/a/') %}active{% endif %}">
-          <span class="ico">📝</span> 기사
-          {% if nc.articles is defined %}<span class="nav-count">{{ nc.articles }}</span>{% endif %}</a>
         <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
           <span class="ico">🗞</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">

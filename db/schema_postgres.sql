@@ -170,6 +170,7 @@ CREATE TABLE jobs (
   total       INTEGER NOT NULL DEFAULT 0,
   done        INTEGER NOT NULL DEFAULT 0,
   message     TEXT DEFAULT '',
+  target      TEXT DEFAULT '',                 -- 처리 중인 메시지 id 목록(쉼표) — '생성중' 표시용
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now()
 );

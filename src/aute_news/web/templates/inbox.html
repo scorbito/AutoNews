@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}수집함{% endblock %}
+{% block title %}기사함{% endblock %}
 {% block body %}
-<h2 style="text-align:center; margin:0 0 16px;">수집함 <span class="sub">{{ msgs|length }}건</span></h2>
+<h2 style="text-align:center; margin:0 0 16px;">
+  기사함 <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 <div id="jobBanner" class="job-banner" style="display:none;">
@@ -9,70 +10,80 @@
   <span id="jobMsg">처리 중…</span>
   <div id="jobBar" class="job-bar" style="display:none;"><div id="jobFill" class="job-fill"></div></div>
 </div>
-<div class="row" style="gap:14px;">
-  <form method="post" action="/collect">
-    <button type="submit" style="padding:11px 22px; font-size:15px;">📥 메일 수집</button>
+
+<div class="row" style="gap:10px; margin-bottom:6px;">
+  <form method="post" action="/messages/process-all">
+    <button type="submit" class="green">⚡ 미처리 전체 기사 생성</button>
   </form>
 </div>
-<p class="muted" style="margin:8px 0 14px;">
-  ① <b>메일 수집</b>으로 가져온 뒤 → ② 메일을 골라 <b>기사 생성</b>(분할·사진매칭) → ③ 발행은 기사 메뉴에서.</p>
+<p class="muted" style="margin:6px 0 16px;">
+  ① 왼쪽 <b>📥 메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
 
-<form method="post" action="/messages/bulk-process"
-      onsubmit="this.querySelector('#bulkbtn').textContent='처리중… (선택 메일 수만큼 시간이 걸려요)'; this.querySelector('#bulkbtn').disabled=true;">
-  <div class="row" style="position:sticky; top:0; background:var(--bg); padding:10px 0; z-index:5;">
-    <label style="font-weight:normal; display:inline-flex; align-items:center; gap:6px; margin:0;">
-      <input type="checkbox" id="checkall" style="margin:0;"> 전체</label>
-    <span class="muted" id="selcount">0건 선택</span>
-    <button type="submit" id="bulkbtn" class="green">⚡ 선택 일괄 기사 생성</button>
+{% for m in msgs %}
+<div class="card msg-card">
+  <div class="msg-head">
+    <div class="msg-info">
+      <a href="/messages/{{ m.id }}" class="msg-subj">📧 {{ m.subject or '(제목 없음)' }}</a>
+      <div class="muted msg-meta">
+        {{ m.sender }} · {{ m.date }} ·
+        {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
+        {% if m.img_count %} · 📷 {{ m.img_count }}{% endif %}
+        {% if m.pipeline %} · <span class="tag s-draft">{{ m.pipeline }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="msg-actions row">
+      {% if m.id in processing_ids %}
+        <button type="button" class="green sm" disabled><span class="btn-spin"></span> 생성중…</button>
+      {% elif m.articles %}
+        <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
+          <button type="submit" class="gray sm">↻ 재생성</button></form>
+        <form method="post" action="/articles/bulk">
+          {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
+          <button type="submit" class="secondary sm" name="action" value="review">✓ 검토완료</button>
+          <button type="submit" class="publish sm" name="action" value="publish">🚀 발행</button>
+        </form>
+      {% else %}
+        <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
+          <button type="submit" class="green sm">⚡ 기사 생성</button></form>
+      {% endif %}
+    </div>
   </div>
 
-  <table>
-    <thead><tr>
-      <th style="width:34px;"></th><th style="width:40px;">#</th><th>제목</th><th style="width:130px;">첨부</th>
-      <th style="width:90px;">트리아지</th><th style="width:80px;">기사</th><th style="width:110px;"></th>
-    </tr></thead>
+  {% if m.articles %}
+  <table class="msg-arts">
     <tbody>
-    {% for m in msgs %}
+    {% for a in m.articles %}
       <tr>
-        <td><input type="checkbox" class="sel" name="ids" value="{{ m.id }}"></td>
-        <td class="muted">{{ m.id }}</td>
-        <td>
-          <div><a href="/messages/{{ m.id }}">{{ m.subject or '(제목 없음)' }}</a></div>
-          <div class="muted" style="font-size:12px;">{{ m.sender }} · {{ m.date }}</div>
-        </td>
-        <td class="muted" style="font-size:12px;">
-          {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
-          {% if m.img_count %}<br>📷 {{ m.img_count }}{% endif %}
-        </td>
-        <td>{% if m.pipeline %}<span class="tag s-draft">{{ m.pipeline }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
-        <td>
-          {% if m.art_count %}<a href="/?status=all">기사 {{ m.art_count }}건</a>{% else %}<span class="muted">0</span>{% endif %}
-        </td>
-        <td>
-          <!-- 개별 처리(formaction으로 같은 폼 안에서) -->
-          <button type="submit" formaction="/messages/{{ m.id }}/process" class="{% if m.art_count %}gray{% else %}green{% endif %}"
-                  style="font-size:12px; padding:5px 10px;">
-            {% if m.art_count %}↻ 재생성{% else %}⚡ 생성{% endif %}</button>
-        </td>
+        <td class="muted" style="width:30px;">{{ a.sequence_number }}</td>
+        <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
+        <td class="muted" style="width:96px;">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
+        <td class="muted" style="width:60px;">{% if a.photo_count %}📷 {{ a.photo_count }}{% else %}–{% endif %}</td>
+        <td style="width:96px;"><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-</form>
+  {% else %}
+  <div class="muted msg-empty">아직 기사를 만들지 않았습니다 — <b>⚡ 기사 생성</b>을 누르세요.</div>
+  {% endif %}
+</div>
+{% endfor %}
+
 {% if not msgs %}
-<div class="empty">수집된 메일이 없습니다.<br>왼쪽 위 <b>📥 메일 수집</b>으로 가져오세요.</div>
+<div class="empty">
+  수집된 메일이 없습니다.<br>아래 버튼으로 메일을 가져오세요.
+  <form method="post" action="/collect" style="display:block; margin-top:16px;">
+    <button type="submit" style="padding:11px 24px; font-size:15px;">📥 메일 수집</button>
+  </form>
+</div>
 {% endif %}
 
 <script>
-  const boxes = () => Array.from(document.querySelectorAll('.sel'));
-  const count = () => {
-    document.getElementById('selcount').textContent =
-      boxes().filter(b => b.checked).length + '건 선택';
-  };
-  document.getElementById('checkall').addEventListener('change', e => {
-    boxes().forEach(b => b.checked = e.target.checked); count();
-  });
-  document.addEventListener('change', e => { if (e.target.classList.contains('sel')) count(); });
+  // 기사 생성/재생성 클릭 즉시 버튼을 '생성중'으로(리다이렉트 전 잠깐) + 더블클릭 방지
+  document.querySelectorAll('.gen-form').forEach(f => f.addEventListener('submit', () => {
+    const b = f.querySelector('button');
+    if (b) { b.disabled = true; b.innerHTML = '<span class="btn-spin"></span> 생성중…'; }
+  }));
 
   // ── 백그라운드 작업 진행상태 폴링 ──
   let wasRunning = false;

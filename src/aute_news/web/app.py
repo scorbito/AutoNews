@@ -46,6 +46,17 @@ def _nav_counts(request: Request) -> dict:
 
 templates.env.globals["nav_counts"] = _nav_counts
 
+
+def _static_ver() -> str:
+    """app.css 수정시각 → 캐시 버스팅 버전(브라우저가 옛 CSS 캐시하는 문제 방지)."""
+    try:
+        return str(int((BASE / "static" / "app.css").stat().st_mtime))
+    except OSError:
+        return "1"
+
+
+templates.env.globals["static_ver"] = _static_ver()
+
 STATUS_LABEL = {None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨"}
 ASTATUS = {None: "-", "split": "분할됨", "drafted": "초안",
            "reviewed": "검토완료", "published": "발행됨"}
@@ -284,17 +295,9 @@ def _group_by_email(arts: list) -> list:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, status: str = "all"):
-    t = _tenant(request)
-    conn = db.connect()
-    arts = db.list_all_articles(conn, status, tenant_id=t)
-    counts = db.article_status_counts(conn, tenant_id=t)
-    conn.close()
-    return templates.TemplateResponse(
-        request, "articles.html",
-        {"groups": _group_by_email(arts), "total": len(arts),
-         "astatus": ASTATUS, "filters": AFILTERS, "counts": counts,
-         "active": status, "cats": CATEGORY_CODES, "email": request.session.get("email")})
+def index(request: Request):
+    # 수집함+기사 통합 → 기사함(/inbox) 하나로
+    return RedirectResponse("/inbox", status_code=303)
 
 
 @app.post("/articles/bulk")
@@ -310,18 +313,31 @@ def articles_bulk(request: Request, action: str = Form(...),
         for aid in ids:
             publish_article(conn, aid, tenant_id=t)
     conn.close()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/inbox", status_code=303)
 
 
 @app.get("/inbox", response_class=HTMLResponse)
 def inbox(request: Request, msg: str = ""):
-    """수집함 — 수집된 메일을 하나씩 골라 기사 생성(처리)."""
+    """기사함 — 수집 메일 + 그 메일이 생성한 기사를 한 화면에."""
     t = _tenant(request)
     conn = db.connect()
     msgs = db.list_messages(conn, tenant_id=t)
+    arts = db.list_all_articles(conn, "all", tenant_id=t)
+    active = db.active_job(conn, t)
     conn.close()
+    # 현재 처리 중인 메시지 id(있으면 그 카드 버튼을 '생성중'으로)
+    processing_ids = set()
+    if active and active["kind"] == "process" and active["target"]:
+        processing_ids = {int(x) for x in active["target"].split(",") if x.strip().isdigit()}
+    by_msg: dict = {}
+    for a in arts:
+        by_msg.setdefault(a["email_id"], []).append(a)
+    for m in msgs:
+        m["articles"] = by_msg.get(m["id"], [])
     return templates.TemplateResponse(
-        request, "inbox.html", {"msgs": msgs, "msg": msg})
+        request, "inbox.html",
+        {"msgs": msgs, "msg": msg, "total_arts": len(arts), "processing_ids": processing_ids,
+         "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
 @app.get("/messages/{message_id}", response_class=HTMLResponse)
@@ -387,14 +403,15 @@ def _run_process(ids: list[int], tenant_id: int, job_id: int) -> None:
         conn.close()
 
 
-def _start_job(request: Request, kind: str, total: int, message: str):
+def _start_job(request: Request, kind: str, total: int, message: str, target: str = ""):
     """진행 중 작업이 있으면 막고, 없으면 job 생성. (job_id, busy) 반환."""
     t = _tenant(request)
     conn = db.connect()
     if db.active_job(conn, t):
         conn.close()
         return None, True
-    job_id = db.create_job(conn, t, request.session.get("user_id"), kind, total=total, message=message)
+    job_id = db.create_job(conn, t, request.session.get("user_id"), kind,
+                           total=total, message=message, target=target)
     conn.close()
     return job_id, False
 
@@ -415,7 +432,8 @@ def messages_bulk_process(request: Request, background: BackgroundTasks,
     """선택한 메일들을 백그라운드로 일괄 기사 생성."""
     if not ids:
         return RedirectResponse("/inbox", status_code=303)
-    job_id, busy = _start_job(request, "process", len(ids), "기사 생성 준비 중…")
+    job_id, busy = _start_job(request, "process", len(ids), "기사 생성 준비 중…",
+                              target=",".join(str(i) for i in ids))
     if busy:
         return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
     background.add_task(_run_process, list(ids), _tenant(request), job_id)
@@ -425,10 +443,34 @@ def messages_bulk_process(request: Request, background: BackgroundTasks,
 @app.post("/messages/{message_id}/process")
 def message_process(request: Request, message_id: int, background: BackgroundTasks):
     """메일 1건을 백그라운드로 처리."""
-    job_id, busy = _start_job(request, "process", 1, "기사 생성 중…")
+    job_id, busy = _start_job(request, "process", 1, "기사 생성 중…", target=str(message_id))
     if busy:
         return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
     background.add_task(_run_process, [message_id], _tenant(request), job_id)
+    return RedirectResponse("/inbox", status_code=303)
+
+
+@app.post("/messages/process-all")
+def messages_process_all(request: Request, background: BackgroundTasks):
+    """아직 기사 안 만든 메일 전체를 백그라운드로 일괄 생성."""
+    t = _tenant(request)
+    conn = db.connect()
+    rows = conn.execute(
+        """SELECT m.id FROM messages m WHERE m.tenant_id=? AND NOT EXISTS (
+               SELECT 1 FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
+               WHERE a.message_pk=m.id) ORDER BY m.id""", (t,)).fetchall()
+    ids = [r["id"] for r in rows]
+    if not ids:
+        conn.close()
+        return RedirectResponse("/inbox?msg=처리할 미처리 메일이 없습니다", status_code=303)
+    if db.active_job(conn, t):
+        conn.close()
+        return RedirectResponse("/inbox?msg=이미 처리 중인 작업이 있습니다", status_code=303)
+    job_id = db.create_job(conn, t, request.session.get("user_id"), "process",
+                           total=len(ids), message="미처리 메일 기사 생성 준비 중…",
+                           target=",".join(str(i) for i in ids))
+    conn.close()
+    background.add_task(_run_process, ids, t, job_id)
     return RedirectResponse("/inbox", status_code=303)
 
 
