@@ -46,7 +46,8 @@
         </form>
       {% else %}
         {% if m.articles %}
-        <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
+        <form method="post" action="/messages/{{ m.id }}/process" class="gen-form"
+              data-confirm="기존 기사를 새로 만든 내용으로 교체합니다. 계속할까요?">
           <button type="submit" class="gray sm">↻ 재생성</button></form>
         {% else %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
@@ -65,7 +66,8 @@
     <summary>
       <span class="arts-title">기사 {{ m.articles|length }}건</span>
       {% if not busy %}
-      <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()">
+      <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()"
+            data-confirm="이 메일의 기사 전체를 발행합니다. 계속할까요?">
         {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
         <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
       </form>
@@ -86,7 +88,8 @@
             {% elif busy %}
               <span class="muted" style="font-size:12px;">대기/진행중</span>
             {% else %}
-              <form method="post" action="/a/{{ a.id }}/publish">
+              <form method="post" action="/a/{{ a.id }}/publish"
+                    data-confirm="이 기사를 발행합니다. 계속할까요?">
                 <button type="submit" class="publish sm">🚀 발행</button></form>
             {% endif %}
           </td>

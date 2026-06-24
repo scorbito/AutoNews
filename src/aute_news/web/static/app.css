@@ -283,20 +283,54 @@ button[disabled] { opacity: .8; cursor: default; }
 }
 .modal h3 { font-size: 17px; font-weight: 700; }
 
-/* ── 반응형 ──────────────────────────────────────────── */
+/* ── 반응형 (모바일: 전체 세로형) ─────────────────────── */
 @media (max-width: 820px) {
+  html, body { overflow-x: hidden; }
   .app { grid-template-columns: 1fr; }
+
+  /* 사이드바: 상단 한 줄 — auto_news | 메뉴(가운데) | 메일수집 */
   .sidebar {
-    position: static; height: auto; flex-direction: row; align-items: center;
-    overflow-x: auto; padding: 10px; gap: 6px;
+    position: relative; height: auto; flex-direction: row; flex-wrap: wrap;
+    align-items: center; padding: 9px 12px; gap: 8px; row-gap: 6px;
+    border-right: 0; border-bottom: 1px solid var(--border);
   }
-  .brand { padding: 6px 8px; }
-  .sidebar .collect { margin: 0; }
+  /* 1행: auto_news (왼쪽, 늘어남) + 메일 수집 (오른쪽) */
+  .brand { order: 1; flex: 1 1 auto; padding: 2px 4px; }
+  .sidebar .collect { order: 2; margin: 0; flex: none; }
   .sidebar .collect button { width: auto; padding: 9px 14px; }
-  .nav { flex-direction: row; margin: 0; }
-  .nav-label, .sidebar .spacer { display: none; }
-  .userbox { border-top: 0; border-left: 1px solid var(--border); padding: 0 0 0 10px; margin: 0; }
-  .userbox .who { display: none; }
-  .content { padding: 18px; }
+  /* 2행: 메뉴 가로 (가운데) */
+  .nav {
+    order: 3; flex: 1 1 100%; min-width: 0; flex-direction: row; flex-wrap: wrap;
+    justify-content: center; gap: 3px; margin: 0;
+  }
+  .nav-item { flex: none; padding: 7px 10px; font-size: 13.5px; gap: 0; }
+  .nav-item .ico { display: none; }                    /* 모바일은 텍스트만 (공간 확보) */
+  /* 카운트를 뱃지 대신 기사함(7) 인라인 텍스트로 */
+  .nav-item .nav-count,
+  .nav-item.active .nav-count {
+    background: none; color: inherit; font-weight: 600;
+    margin-left: 1px; padding: 0; min-width: 0;
+  }
+  .nav-item .nav-count::before { content: '('; }
+  .nav-item .nav-count::after { content: ')'; }
+  .nav-label, .sidebar .spacer, .queue, .userbox { display: none; }  /* 로그아웃은 내 설정으로 */
+
+  .content { padding: 16px; max-width: 100%; overflow-x: hidden; }
   .grid { grid-template-columns: 1fr; }
+
+  /* 메일 카드 머리: 제목 위 / 액션 버튼 아래로 세로 배치 */
+  .msg-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .msg-actions { justify-content: flex-start; }
+
+  /* 기사 표 → 세로 흐름 (가로 넘침 제거): 제목 한 줄, 그 아래 분류·상태·발행 */
+  .msg-arts, .msg-arts tbody, .msg-arts tr, .msg-arts td { display: block; width: auto !important; }
+  .msg-arts tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .msg-arts tbody tr:last-child { border-bottom: 0; }
+  .msg-arts td { padding: 0 !important; border: 0; }
+  .msg-arts td:first-child { display: none; }          /* 번호 숨김 */
+  .msg-arts td:nth-child(2) { flex: 1 1 100%; }         /* 제목 한 줄 차지 */
+  .msg-arts td:nth-child(2) a { font-size: 15px; }
 }

@@ -27,7 +27,7 @@
     <div class="row" style="margin-top:12px;">
       <button type="submit" form="editform">💾 저장</button>
       <form method="post" action="/a/{{ a.id }}/review"><button class="gray" type="submit">✓ 검토완료</button></form>
-      <form method="post" action="/a/{{ a.id }}/publish"><button class="publish" type="submit">🚀 발행</button></form>
+      <form method="post" action="/a/{{ a.id }}/publish" data-confirm="이 기사를 발행합니다. 계속할까요?"><button class="publish" type="submit">🚀 발행</button></form>
     </div>
     <p class="muted">※ 로컬·CMS 미설정이면 발행 게시판(미리보기), 운영서버+CMS 설정이면 실제 발행됩니다.</p>
   </div>

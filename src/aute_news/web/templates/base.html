@@ -85,10 +85,49 @@
       </div>
     </div>
   </div>
+  <!-- 범용 확인 모달 (발행·전체발행·재생성 등) — 폼에 data-confirm="문구" 달면 자동 -->
+  <div id="actionConfirm" class="modal-ov" onclick="if(event.target===this)closeActionConfirm()">
+    <div class="modal">
+      <h3 id="acTitle" style="margin:0 0 10px;">확인</h3>
+      <p id="acMsg" class="muted" style="margin:0 0 20px; line-height:1.7; font-size:14px;"></p>
+      <div class="row" style="justify-content:flex-end; gap:8px;">
+        <button type="button" class="secondary" onclick="closeActionConfirm()">취소</button>
+        <button type="button" id="acOk" onclick="confirmAction()">확인</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     function openCollectConfirm() { document.getElementById('collectConfirm').style.display = 'flex'; }
     function closeCollectConfirm() { document.getElementById('collectConfirm').style.display = 'none'; }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCollectConfirm(); });
+
+    // 범용 확인 모달 — data-confirm 폼의 제출을 가로채 확인 후 진행
+    let _acForm = null;
+    function openActionConfirm(form, msg) {
+      _acForm = form;
+      document.getElementById('acMsg').textContent = msg;
+      document.getElementById('actionConfirm').style.display = 'flex';
+    }
+    function closeActionConfirm() {
+      document.getElementById('actionConfirm').style.display = 'none';
+      _acForm = null;
+    }
+    function confirmAction() {
+      const f = _acForm; closeActionConfirm();
+      if (f) f.submit();   // 프로그램적 제출(submit 리스너 우회) → 실제 진행
+    }
+    document.addEventListener('submit', function (e) {
+      const f = e.target;
+      if (f.dataset && f.dataset.confirm) {
+        e.preventDefault();
+        e.stopPropagation();   // gen-form 등 다른 submit 리스너 차단
+        openActionConfirm(f, f.dataset.confirm);
+      }
+    }, true);
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeCollectConfirm(); closeActionConfirm(); }
+    });
   </script>
 </body>
 </html>
