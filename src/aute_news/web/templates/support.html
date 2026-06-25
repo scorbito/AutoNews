@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}문의·건의{% endblock %}
+{% block body %}
+<h2 style="margin:0 0 16px;">문의·건의 {% if is_admin %}<span class="sub">전체 (관리자)</span>{% endif %}</h2>
+{% if msg %}<p class="block">{{ msg }}</p>{% endif %}
+
+{% if not is_admin %}
+<div class="card" style="max-width:640px; margin-bottom:18px;">
+  <h3>새 문의·건의</h3>
+  <form method="post" action="/support">
+    <label>유형</label>
+    <select name="kind">
+      <option value="문의">문의 (사용 중 궁금한 점)</option>
+      <option value="건의">건의 (개선 제안)</option>
+    </select>
+    <label>제목</label>
+    <input type="text" name="subject" required placeholder="제목">
+    <label>내용</label>
+    <textarea name="body" required style="min-height:160px;" placeholder="내용을 적어주세요."></textarea>
+    <div class="row" style="margin-top:10px;"><button type="submit">등록</button></div>
+  </form>
+  <p class="muted" style="margin-top:8px;">등록하면 운영자에게 전달되고, 답변이 달리면 목록에서 확인할 수 있습니다.</p>
+</div>
+{% endif %}
+
+{% set slabel = {'open':'대기','answered':'답변완료','closed':'처리완료'} %}
+{% set scls = {'open':'s-pending','answered':'s-done','closed':'s-published'} %}
+{% if items %}
+<table>
+  <thead><tr>
+    <th style="width:64px;">유형</th><th>제목</th>
+    {% if is_admin %}<th style="width:200px;">작성자</th>{% endif %}
+    <th style="width:92px;">상태</th><th style="width:110px;">등록일</th>
+  </tr></thead>
+  <tbody>
+  {% for i in items %}
+    <tr>
+      <td>{{ i.kind }}</td>
+      <td><a href="/support/{{ i.id }}">{{ i.subject }}</a>{% if i.reply %} <span class="muted" style="font-size:12px;">💬</span>{% endif %}</td>
+      {% if is_admin %}<td class="muted" style="font-size:12px;">{{ i.tenant_name }} · {{ i.user_email }}</td>{% endif %}
+      <td><span class="tag {{ scls.get(i.status, 's-pending') }}">{{ slabel.get(i.status, i.status) }}</span></td>
+      <td class="muted" style="font-size:12px;">{{ i.created_at.strftime('%Y-%m-%d') if i.created_at else '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">{% if is_admin %}접수된 문의·건의가 없습니다.{% else %}아직 문의·건의가 없습니다. 위에서 작성해 보세요.{% endif %}</div>
+{% endif %}
+{% endblock %}

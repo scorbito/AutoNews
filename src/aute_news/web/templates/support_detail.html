@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ i.subject }}{% endblock %}
+{% block body %}
+<p><a href="/support">← 문의·건의</a></p>
+{% set slabel = {'open':'대기','answered':'답변완료','closed':'처리완료'} %}
+{% set scls = {'open':'s-pending','answered':'s-done','closed':'s-published'} %}
+<div class="card" style="max-width:720px;">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <h3 style="margin:0; text-transform:none; letter-spacing:0; color:var(--gray-900); font-size:18px;">
+      [{{ i.kind }}] {{ i.subject }}</h3>
+    <span class="tag {{ scls.get(i.status, 's-pending') }}">{{ slabel.get(i.status, i.status) }}</span>
+  </div>
+  <p class="muted" style="margin:6px 0 14px; font-size:12px;">
+    {% if is_admin %}{{ i.tenant_name }} · {{ i.user_email }} · {% endif %}
+    {{ i.created_at.strftime('%Y-%m-%d %H:%M') if i.created_at else '' }}</p>
+  <pre style="background:var(--gray-50); border:1px solid var(--border); border-radius:var(--r-sm); padding:14px;">{{ i.body }}</pre>
+
+  {% if i.reply %}
+  <div class="block" style="margin-top:16px;">
+    <b>📨 운영자 답변</b>
+    <pre style="margin:6px 0 0;">{{ i.reply }}</pre>
+    {% if i.replied_at %}<div class="muted" style="font-size:12px; margin-top:6px;">{{ i.replied_at.strftime('%Y-%m-%d %H:%M') }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if is_admin %}
+  <form method="post" action="/support/{{ i.id }}/reply" style="margin-top:16px;">
+    <label>답변 작성</label>
+    <textarea name="reply" required style="min-height:120px;">{{ i.reply or '' }}</textarea>
+    <div class="row" style="margin-top:10px;"><button type="submit">답변 등록</button></div>
+  </form>
+  {% endif %}
+
+  {% if i.status != 'closed' %}
+  <form method="post" action="/support/{{ i.id }}/close" style="margin-top:10px;">
+    <button type="submit" class="secondary sm">처리완료로 변경</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

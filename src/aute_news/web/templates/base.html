@@ -39,6 +39,9 @@
         <a href="/admin" class="nav-item {% if p.startswith('/admin') %}active{% endif %}">
           <span class="ico">🛠</span> 관리자</a>
         {% endif %}
+        <!-- 모바일: 메뉴 끝 인라인 (데스크톱에선 숨기고 하단의 것을 사용) -->
+        <a href="/support" class="nav-item nav-support-m {% if p.startswith('/support') %}active{% endif %}">
+          <span class="ico">💬</span> 문의·건의</a>
       </nav>
 
       {% set q = job_queue(request) %}
@@ -61,6 +64,9 @@
       {% endif %}
 
       <div class="spacer"></div>
+
+      <a href="/support" class="nav-item nav-support-d {% if p.startswith('/support') %}active{% endif %}">
+        <span class="ico">💬</span> 문의·건의</a>
 
       <div class="userbox">
         {% set em = request.session.get('email','') %}

@@ -502,11 +502,48 @@ def delete_tenant(conn, tenant_id: int) -> tuple[list[str], list[str]]:
         "SELECT user_id FROM tenant_users WHERE tenant_id=?", (tenant_id,)).fetchall()]
     # 자식 → 부모 순서로 삭제 (FK 제약)
     for tbl in ("images", "articles", "drafts", "attachments", "messages",
-                "folder_state", "jobs", "user_mail_config", "tenant_config", "tenant_users"):
+                "folder_state", "jobs", "inquiries", "user_mail_config", "tenant_config", "tenant_users"):
         conn.execute(f"DELETE FROM {tbl} WHERE tenant_id=?", (tenant_id,))
     conn.execute("DELETE FROM tenants WHERE id=?", (tenant_id,))
     conn.commit()
     return keys, user_ids
+
+
+# --- 문의·건의 게시판 (기자=본인 글만, 관리자=전체) ---
+
+def create_inquiry(conn, tenant_id: int, user_id: str | None, user_email: str | None,
+                   kind: str, subject: str, body: str) -> int:
+    return conn.execute(
+        """INSERT INTO inquiries (tenant_id, user_id, user_email, kind, subject, body)
+           VALUES (?,?,?,?,?,?) RETURNING id""",
+        (tenant_id, user_id, user_email, kind, subject, body)).fetchone()["id"]
+
+
+def list_inquiries(conn, tenant_id: int | None = None) -> list:
+    """tenant_id=None 이면 전체(관리자), 값이 있으면 그 테넌트 글만."""
+    base = ("SELECT i.*, t.name tenant_name FROM inquiries i JOIN tenants t ON t.id=i.tenant_id")
+    if tenant_id is None:
+        return conn.execute(base + " ORDER BY i.id DESC").fetchall()
+    return conn.execute(base + " WHERE i.tenant_id=? ORDER BY i.id DESC", (tenant_id,)).fetchall()
+
+
+def get_inquiry(conn, inquiry_id: int, tenant_id: int | None = None):
+    base = ("SELECT i.*, t.name tenant_name FROM inquiries i JOIN tenants t ON t.id=i.tenant_id "
+            "WHERE i.id=?")
+    if tenant_id is None:
+        return conn.execute(base, (inquiry_id,)).fetchone()
+    return conn.execute(base + " AND i.tenant_id=?", (inquiry_id, tenant_id)).fetchone()
+
+
+def reply_inquiry(conn, inquiry_id: int, reply: str) -> None:
+    conn.execute("UPDATE inquiries SET reply=?, status='answered', replied_at=now() WHERE id=?",
+                 (reply, inquiry_id))
+    conn.commit()
+
+
+def set_inquiry_status(conn, inquiry_id: int, status: str) -> None:
+    conn.execute("UPDATE inquiries SET status=? WHERE id=?", (status, inquiry_id))
+    conn.commit()
 
 
 def clear_synthetic_attachments(conn, message_pk: int, tenant_id: int = DEFAULT_TENANT) -> None:

@@ -320,6 +320,64 @@ async def admin_subscription(request: Request, tid: int):
     return RedirectResponse(f"/admin?msg={msg}", status_code=303)
 
 
+# ── 문의·건의 게시판 (B방식: 같은 게시판, 기자는 본인 글 / 관리자는 전체) ──
+@app.get("/support", response_class=HTMLResponse)
+def support_home(request: Request, msg: str = ""):
+    is_admin = _require_admin(request)
+    conn = db.connect()
+    items = db.list_inquiries(conn, None if is_admin else _tenant(request))
+    conn.close()
+    return templates.TemplateResponse(
+        request, "support.html", {"items": items, "is_admin": is_admin, "msg": msg})
+
+
+@app.post("/support")
+def support_create(request: Request, kind: str = Form("문의"),
+                   subject: str = Form(...), body: str = Form(...)):
+    t = _tenant(request)
+    email = request.session.get("email")
+    conn = db.connect()
+    iid = db.create_inquiry(conn, t, request.session.get("user_id"), email,
+                            kind, subject.strip(), body.strip())
+    conn.close()
+    notify.alert_operator(f"📩 새 {kind}: {subject.strip()}\n작성자: {email} (tenant {t})\n글번호 #{iid}")
+    return RedirectResponse("/support?msg=등록되었습니다. 답변이 등록되면 여기서 확인할 수 있어요.",
+                            status_code=303)
+
+
+@app.get("/support/{iid}", response_class=HTMLResponse)
+def support_detail(request: Request, iid: int):
+    is_admin = _require_admin(request)
+    conn = db.connect()
+    item = db.get_inquiry(conn, iid, None if is_admin else _tenant(request))
+    conn.close()
+    if not item:
+        return HTMLResponse("글을 찾을 수 없습니다.", 404)
+    return templates.TemplateResponse(
+        request, "support_detail.html", {"i": item, "is_admin": is_admin})
+
+
+@app.post("/support/{iid}/reply")
+def support_reply(request: Request, iid: int, reply: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    conn = db.connect()
+    db.reply_inquiry(conn, iid, reply.strip())
+    conn.close()
+    return RedirectResponse(f"/support/{iid}", status_code=303)
+
+
+@app.post("/support/{iid}/close")
+def support_close(request: Request, iid: int):
+    is_admin = _require_admin(request)
+    conn = db.connect()
+    item = db.get_inquiry(conn, iid, None if is_admin else _tenant(request))
+    if item:
+        db.set_inquiry_status(conn, iid, "closed")
+    conn.close()
+    return RedirectResponse("/support?msg=처리완료로 변경했습니다.", status_code=303)
+
+
 # ── 기사(articles) ────────────────────────────────────
 def _group_by_email(arts: list) -> list:
     """기사 목록을 출처 메일별 묶음으로(순서 유지). [{subject, date, count, articles:[]}]."""
