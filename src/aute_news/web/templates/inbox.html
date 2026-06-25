@@ -10,6 +10,23 @@
   <a href="/settings" class="btn sm secondary">내 설정 열기</a>
 </div>
 {% endif %}
+{% if sub and sub.blocked_reason %}
+<div class="job-banner error" style="justify-content:space-between;">
+  <span>
+    {% if sub.blocked_reason == 'quota' %}
+    ⚠️ 이번 결제주기 기사 한도({{ sub.quota }}건)를 모두 사용했습니다. 수집·생성이 일시 정지됩니다 — 다음 결제일에 초기화됩니다.
+    {% else %}
+    ⚠️ 구독이 필요합니다. 결제 후 메일 수집·기사 생성이 가능합니다.
+    {% endif %}
+  </span>
+  <a href="/billing" class="btn sm secondary">구독 보기</a>
+</div>
+{% elif sub and sub.exists and sub.remaining <= 10 and sub.remaining > 0 %}
+<div class="job-banner" style="justify-content:space-between;">
+  <span>이번 주기 기사 한도가 {{ sub.remaining }}건 남았습니다.</span>
+  <a href="/billing" class="btn sm secondary">구독 보기</a>
+</div>
+{% endif %}
 
 <div id="jobBanner" class="job-banner" style="display:none;">
   <span class="spinner"></span>

@@ -25,12 +25,26 @@
       <span class="tag s-published">기사 {{ t.articles }}</span>
       {% if t.collect_enabled %}<span class="tag s-done">예약 {{ t.collect_times }}</span>
       {% else %}<span class="tag s-pending">예약 꺼짐</span>{% endif %}
+      {% set sb = t.sub %}
+      <span class="tag {% if sb.active and sb.blocked_reason != 'quota' %}s-done{% else %}s-pending{% endif %}">
+        구독 {{ sb.status }}{% if sb.blocked_reason == 'quota' %}(한도소진){% endif %}
+        · {{ sb.used }}/{{ sb.quota }}</span>
     </div>
     <form method="post" action="/admin/tenant/{{ t.id }}/delete"
           data-confirm="기자 '{{ t.name }}'(#{{ t.id }})와 모든 메일·기사·계정·파일을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?">
       <button type="submit" class="danger sm">🗑 삭제</button>
     </form>
   </div>
+
+  <!-- 구독 수동 관리 (결제 붙기 전 운영자용) -->
+  <form method="post" action="/admin/tenant/{{ t.id }}/subscription" class="row"
+        style="margin-top:8px; gap:6px; align-items:center;">
+    <span class="muted" style="font-size:12px;">구독:</span>
+    <input type="number" name="days" value="30" title="기간(일)" style="width:64px;">일
+    <input type="number" name="quota" value="400" title="기사 한도" style="width:74px;">건
+    <button type="submit" name="action" value="activate" class="sm">활성화/연장</button>
+    <button type="submit" name="action" value="deactivate" class="sm secondary">비활성화</button>
+  </form>
 
   <!-- 기자별 메일 계정 (개인) -->
   <div style="margin-top:10px;">

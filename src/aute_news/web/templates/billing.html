@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}구독·결제{% endblock %}
+{% block body %}
+<h2 style="margin:0 0 16px;">구독</h2>
+{% if msg %}<p class="block">{{ msg }}</p>{% endif %}
+
+{% set s = sub %}
+{% set badge = {'active':('s-done','구독중'), 'trialing':('s-draft','무료 체험'),
+                'past_due':('s-pending','결제 필요'), 'canceled':('s-pending','해지됨'),
+                'inactive':('s-pending','미구독')} %}
+
+<div class="card" style="max-width:520px;">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <strong style="font-size:16px;">{{ s.plan or 'basic' }} 플랜</strong>
+    <span class="tag {{ badge.get(s.status, ('s-pending',''))[0] }}">
+      {{ badge.get(s.status, ('s-pending', s.status))[1] }}</span>
+  </div>
+
+  {% if s.blocked_reason == 'quota' %}
+  <div class="job-banner error" style="margin:14px 0 0;">
+    <span>⚠️ 이번 결제주기 기사 한도를 모두 사용했습니다. 다음 결제일에 초기화됩니다.</span></div>
+  {% elif not s.active %}
+  <div class="job-banner error" style="margin:14px 0 0;">
+    <span>⚠️ 구독이 활성 상태가 아닙니다. 결제 후 수집·생성이 가능합니다.</span></div>
+  {% endif %}
+
+  <div style="margin-top:16px;">
+    <label class="muted" style="font-size:13px;">이번 주기 기사 사용량</label>
+    <div class="row" style="align-items:center; gap:10px;">
+      <div class="job-bar" style="flex:1; height:10px;">
+        <div class="job-fill" style="width:{{ ((s.used / s.quota * 100) if s.quota else 0)|round(0, 'floor') }}%;
+             {% if s.remaining <= 0 %}background:#c5221f;{% endif %}"></div>
+      </div>
+      <b>{{ s.used }} / {{ s.quota }}</b>
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:4px;">남은 한도 {{ s.remaining }}건</div>
+  </div>
+
+  {% if s.period_end %}
+  <div class="muted" style="font-size:13px; margin-top:14px;">
+    다음 결제(갱신)일: <b>{{ s.period_end.strftime('%Y-%m-%d') if s.period_end.strftime else s.period_end }}</b></div>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:520px; margin-top:14px;">
+  <h3 style="margin:0 0 8px;">결제</h3>
+  <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.6;">
+    토스페이먼츠 정기결제를 준비 중입니다. 오픈 전까지는 운영자가 구독을 활성화해 드립니다.</p>
+  <button type="button" class="secondary" disabled
+          title="결제 시스템 준비 중">💳 결제하기 (준비 중)</button>
+</div>
+{% endblock %}

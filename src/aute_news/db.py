@@ -664,3 +664,48 @@ def bulk_set_status(conn, att_ids: list[int], status: str, tenant_id: int = DEFA
         f"WHERE tenant_id=? AND attachment_id IN ({placeholders})",
         (status, tenant_id, *att_ids))
     return cur.rowcount
+
+
+# --- 구독(subscriptions) ---
+
+def get_subscription(conn, tenant_id: int) -> dict | None:
+    """테넌트 구독 1행 + 만료여부(expired). 없으면 None."""
+    row = conn.execute(
+        "SELECT *, (period_end IS NOT NULL AND period_end <= now()) AS expired "
+        "FROM subscriptions WHERE tenant_id=?", (tenant_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_subscription(conn, tenant_id: int, **fields) -> None:
+    """구독 upsert. 제공된 필드만 갱신(status/plan/monthly_quota/period_*/provider 등)."""
+    cols = {k: v for k, v in fields.items()
+            if k in ("status", "plan", "monthly_quota", "period_start", "period_end",
+                     "provider", "billing_key_enc")}
+    if not cols:
+        return
+    names = ["tenant_id", *cols.keys()]
+    placeholders = ",".join(["?"] * len(names))
+    updates = ", ".join(f"{c}=excluded.{c}" for c in cols)
+    conn.execute(
+        f"INSERT INTO subscriptions ({','.join(names)}) VALUES ({placeholders}) "
+        f"ON CONFLICT (tenant_id) DO UPDATE SET {updates}, updated_at=now()",
+        (tenant_id, *cols.values()))
+    conn.commit()
+
+
+def period_article_count(conn, tenant_id: int, period_start) -> int:
+    """이번 결제주기에 생성된 기사 수(한도 카운트). period_start 이후 생성된 기사 행 수.
+
+    기사 1행 = LLM 생성 1회분. period_start 가 없으면(구독 없음) 0.
+    """
+    if not period_start:
+        return 0
+    return conn.execute(
+        "SELECT COUNT(*) c FROM articles WHERE tenant_id=? AND created_at >= ?",
+        (tenant_id, period_start)).fetchone()["c"]
+
+
+def reset_folder_state(conn, tenant_id: int) -> None:
+    """재구독 시 — 수집 기준선 초기화. 다음 수집이 '오늘 0시'로 재기준선(공백기 옛 메일 스킵)."""
+    conn.execute("DELETE FROM folder_state WHERE tenant_id=?", (tenant_id,))
+    conn.commit()

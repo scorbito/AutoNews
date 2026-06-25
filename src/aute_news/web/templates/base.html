@@ -32,6 +32,8 @@
           <span class="ico">🗞</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">
           <span class="ico">⚙</span> 내 설정</a>
+        <a href="/billing" class="nav-item {% if p.startswith('/billing') %}active{% endif %}">
+          <span class="ico">💳</span> 구독</a>
         {% if request.session.get('is_admin') %}
         <div class="nav-label">운영</div>
         <a href="/admin" class="nav-item {% if p.startswith('/admin') %}active{% endif %}">

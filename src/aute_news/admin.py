@@ -11,7 +11,7 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from . import db, pipeline
+from . import db, pipeline, subscription
 from .collector import collect_for_tenant
 
 load_dotenv()
@@ -49,9 +49,10 @@ def add_user(conn, tenant_id: int, email: str, password: str) -> str:
 
 
 def create_account(conn, name: str, email: str, password: str) -> tuple[int, str]:
-    """신문사 테넌트 + Supabase Auth 사용자 생성 + 매핑. (tenant_id, user_id) 반환."""
+    """기자 테넌트 + Supabase Auth 사용자 생성 + 매핑 + 무료 체험 구독. (tenant_id, user_id) 반환."""
     tid = conn.execute("INSERT INTO tenants (name) VALUES (?) RETURNING id", (name,)).fetchone()["id"]
     uid = add_user(conn, tid, email, password)
+    subscription.start_trial(conn, tid)   # 가입 즉시 무료 체험 시작
     return tid, uid
 
 
@@ -75,6 +76,7 @@ def list_tenants(conn) -> list[dict]:
                 "has_mail": bool(m.get("imap_host") and m.get("imap_email")),
                 "collect_enabled": bool(m.get("collect_enabled")),
             })
+        sub = subscription.status_view(conn, t["id"])
         out.append({
             "id": t["id"], "name": t["name"], "status": t["status"],
             "emails": [u["email"] for u in users],
@@ -86,6 +88,7 @@ def list_tenants(conn) -> list[dict]:
             "collect_times": cfg.get("collect_times"),
             "cms_user_email": cfg.get("cms_user_email"),
             "cms_auto_submit": cfg.get("cms_auto_submit"),
+            "sub": sub,
         })
     return out
 
@@ -102,6 +105,9 @@ def process_tenant(conn, tenant_id: int) -> int:
            ORDER BY m.id""", (tenant_id,)).fetchall()
     made = 0
     for r in rows:
+        # 결제주기 한도 소진 시 자동 생성 중단(남은 메일은 다음 주기로)
+        if not subscription.can_use(conn, tenant_id)[0]:
+            break
         res = pipeline.process_message(conn, r["id"], mode=mode, tenant_id=tenant_id)
         made += len(res.get("articles", []))
     return made

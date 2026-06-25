@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import admin, articlegen, auth, db, notify
+from .. import admin, articlegen, auth, db, subscription, notify
 from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
@@ -301,6 +301,25 @@ async def admin_config(request: Request, tid: int):
     return RedirectResponse(f"/admin?msg=테넌트 {tid} 설정 저장", status_code=303)
 
 
+@app.post("/admin/tenant/{tid}/subscription")
+async def admin_subscription(request: Request, tid: int):
+    """구독 수동 활성화/연장·비활성화(결제 붙기 전 운영자용). 나중에 결제 콜백이 대체."""
+    if not _require_admin(request):
+        return HTMLResponse("관리자 전용입니다.", 403)
+    form = await request.form()
+    conn = db.connect()
+    if form.get("action") == "deactivate":
+        subscription.deactivate(conn, tid)
+        msg = f"테넌트 {tid} 구독 비활성화"
+    else:
+        days = int(form.get("days") or subscription.PERIOD_DAYS)
+        quota = int(form.get("quota") or subscription.DEFAULT_QUOTA)
+        subscription.activate(conn, tid, days=days, quota=quota)
+        msg = f"테넌트 {tid} 구독 활성화 ({days}일 · 한도 {quota})"
+    conn.close()
+    return RedirectResponse(f"/admin?msg={msg}", status_code=303)
+
+
 # ── 기사(articles) ────────────────────────────────────
 def _group_by_email(arts: list) -> list:
     """기사 목록을 출처 메일별 묶음으로(순서 유지). [{subject, date, count, articles:[]}]."""
@@ -368,6 +387,7 @@ def _message_view(request: Request, msg: str, archived: bool):
     last_error = None
     if not archived:                                   # 기사함에만 오류 배너(기자 액션 필요)
         last_error = (db.get_tenant_config(conn, t) or {}).get("last_error")
+    sub = subscription.status_view(conn, t)
     conn.close()
     running = [r for r in job_rows if r["status"] == "running" and r["fresh_running"]]
     active = running[-1] if running else None       # 최신(가장 큰 id) 진행중 작업
@@ -397,7 +417,7 @@ def _message_view(request: Request, msg: str, archived: bool):
         {"msgs": msgs, "msg": msg, "total_arts": total_arts, "processing_ids": processing_ids,
          "processing_label": processing_label, "processing_cls": processing_cls,
          "pending_map": pending_map, "archived": archived, "last_error": last_error,
-         "astatus": ASTATUS, "cats": CATEGORY_CODES})
+         "sub": sub, "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
 @app.get("/messages/{message_id}", response_class=HTMLResponse)
@@ -508,26 +528,35 @@ def _drain(tenant_id: int) -> None:
 
 
 def _enqueue(request: Request, background: BackgroundTasks, kind: str, total: int,
-             payload: str = "", target: str = "") -> None:
-    """작업을 대기열에 넣고 드레이너를 깨운다(이미 돌면 알아서 이어받음)."""
+             payload: str = "", target: str = "") -> str | None:
+    """작업을 대기열에 넣고 드레이너를 깨운다(이미 돌면 알아서 이어받음).
+
+    구독 게이트: 비용 드는 작업(collect/process)은 구독활성+한도여유일 때만.
+    막히면 적재하지 않고 안내 문구를 반환(허용/중복이면 None)."""
     t = _tenant(request)
+    conn = db.connect()
+    if kind in ("collect", "process"):
+        ok, reason = subscription.can_use(conn, t)
+        if not ok:
+            conn.close()
+            return subscription.block_message(reason)
     init = {"collect": "메일 수집 중…", "process": "기사 생성 준비 중…",
             "publish": "발행 준비 중…"}.get(kind, "처리 중…")
-    conn = db.connect()
     if db.job_exists(conn, t, kind, payload):   # 같은 작업이 이미 대기/진행 중 → 중복 적재 방지
         conn.close()
-        return
+        return None
     db.create_job(conn, t, request.session.get("user_id"), kind, total=total,
                   message=init, payload=payload, target=target, status="pending")
     conn.close()
     background.add_task(_drain, t)
+    return None
 
 
 @app.post("/collect")
 def collect_now(request: Request, background: BackgroundTasks):
     """기자 본인 메일함 수집 — 큐에 적재."""
-    _enqueue(request, background, "collect", 0)
-    return RedirectResponse("/inbox", status_code=303)
+    blocked = _enqueue(request, background, "collect", 0)
+    return RedirectResponse(f"/inbox?msg={blocked}" if blocked else "/inbox", status_code=303)
 
 
 @app.post("/messages/bulk-process")
@@ -536,14 +565,14 @@ def messages_bulk_process(request: Request, background: BackgroundTasks,
     if not ids:
         return RedirectResponse("/inbox", status_code=303)
     p = ",".join(str(i) for i in ids)
-    _enqueue(request, background, "process", len(ids), payload=p, target=p)
-    return RedirectResponse("/inbox", status_code=303)
+    blocked = _enqueue(request, background, "process", len(ids), payload=p, target=p)
+    return RedirectResponse(f"/inbox?msg={blocked}" if blocked else "/inbox", status_code=303)
 
 
 @app.post("/messages/{message_id}/process")
 def message_process(request: Request, message_id: int, background: BackgroundTasks):
-    _enqueue(request, background, "process", 1, payload=str(message_id), target=str(message_id))
-    return RedirectResponse("/inbox", status_code=303)
+    blocked = _enqueue(request, background, "process", 1, payload=str(message_id), target=str(message_id))
+    return RedirectResponse(f"/inbox?msg={blocked}" if blocked else "/inbox", status_code=303)
 
 
 @app.post("/messages/process-all")
@@ -560,8 +589,8 @@ def messages_process_all(request: Request, background: BackgroundTasks):
     if not ids:
         return RedirectResponse("/inbox?msg=처리할 미처리 메일이 없습니다", status_code=303)
     p = ",".join(str(i) for i in ids)
-    _enqueue(request, background, "process", len(ids), payload=p, target=p)
-    return RedirectResponse("/inbox", status_code=303)
+    blocked = _enqueue(request, background, "process", len(ids), payload=p, target=p)
+    return RedirectResponse(f"/inbox?msg={blocked}" if blocked else "/inbox", status_code=303)
 
 
 @app.post("/messages/{message_id}/archive")
@@ -702,6 +731,18 @@ def settings_cms(request: Request, publisher: str = Form("html"),
                          cms_password=(cms_password or None))
     conn.close()
     return RedirectResponse("/settings", status_code=303)
+
+
+# ── 구독·결제 ─────────────────────────────────────────
+@app.get("/billing", response_class=HTMLResponse)
+def billing(request: Request, msg: str = ""):
+    """내 구독 상태·한도 사용량 + 결제(준비 중). 결제 연동은 나중에 이 자리에."""
+    conn = db.connect()
+    sub = subscription.status_view(conn, _tenant(request))
+    conn.close()
+    return templates.TemplateResponse(
+        request, "billing.html",
+        {"sub": sub, "msg": msg, "email": request.session.get("email")})
 
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)
@@ -853,6 +894,9 @@ def article(request: Request, att_id: int):
 def generate(request: Request, att_id: int):
     t = _tenant(request)
     conn = db.connect()
+    if not subscription.can_use(conn, t)[0]:
+        conn.close()
+        return RedirectResponse(f"/item/{att_id}", status_code=303)
     row = db.get_item(conn, att_id, tenant_id=t)
     if row and row["extracted_text"]:
         a = generate_article(row["extracted_text"], source_title=row["filename"])
@@ -899,6 +943,9 @@ def bulk(request: Request, action: str = Form(...), ids: Annotated[list[int], Fo
     t = _tenant(request)
     conn = db.connect()
     if action == "generate":
+        if not subscription.can_use(conn, t)[0]:
+            conn.close()
+            return RedirectResponse("/", status_code=303)
         for att_id in ids:
             row = db.get_item(conn, att_id, tenant_id=t)
             if row and row["extracted_text"] and not row["content"]:

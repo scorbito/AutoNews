@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from . import admin, db, notify
+from . import admin, db, notify, subscription
 from .collector import collect_for_tenant
 
 KST = timezone(timedelta(hours=9))
@@ -51,7 +51,8 @@ def due_tenants(conn, window_min: int = 5) -> list[int]:
             if 0 <= (now_min - (hh * 60 + mm)) < window_min:
                 due.append(r["tenant_id"])
                 break
-    return due
+    # 구독 게이트 — 비활성/한도소진 테넌트는 자동(수집·생성)에서 제외
+    return [t for t in due if subscription.can_use(conn, t)[0]]
 
 
 def run_due(window_min: int = 5) -> list[dict]:
