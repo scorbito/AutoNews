@@ -44,9 +44,37 @@
 
 <div class="card" style="max-width:520px; margin-top:14px;">
   <h3 style="margin:0 0 8px;">결제</h3>
-  <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.6;">
-    토스페이먼츠 정기결제를 준비 중입니다. 오픈 전까지는 운영자가 구독을 활성화해 드립니다.</p>
-  <button type="button" class="secondary" disabled
-          title="결제 시스템 준비 중">💳 결제하기 (준비 중)</button>
+  <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.7;">
+    월 <b>{{ "{:,}".format(monthly_price) }}원</b> · 첫 결제 <b>{{ "{:,}".format(next_amount) }}원</b>
+    {% if next_amount < monthly_price %}<b style="color:#3a4fd6;">(첫 달 반값)</b>{% endif %}<br>
+    카드를 등록하면 즉시 첫 결제가 진행되고 30일 구독이 시작됩니다. 이후 매달 자동 결제됩니다.</p>
+  {% if toss_client_key %}
+  <button type="button" id="payBtn" onclick="startBilling()">
+    💳 {{ '결제수단 변경' if has_billing_key else '구독 결제하기' }}</button>
+  {% if toss_client_key.startswith('test_') %}
+  <div class="muted" style="font-size:12px; margin-top:8px;">⚙️ 테스트 모드 — 실제 결제되지 않습니다.</div>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="font-size:13px;">결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.</p>
+  {% endif %}
 </div>
+
+{% if toss_client_key %}
+<script src="https://js.tosspayments.com/v1/payment"></script>
+<script>
+  function startBilling() {
+    var btn = document.getElementById('payBtn');
+    btn.disabled = true;
+    var tp = TossPayments({{ toss_client_key | tojson }});
+    tp.requestBillingAuth('카드', {
+      customerKey: {{ customer_key | tojson }},
+      successUrl: {{ success_url | tojson }},
+      failUrl: {{ fail_url | tojson }}
+    }).catch(function (e) {
+      btn.disabled = false;
+      if (e.code !== 'USER_CANCEL') alert('결제창 오류: ' + (e.message || e.code));
+    });
+  }
+</script>
+{% endif %}
 {% endblock %}

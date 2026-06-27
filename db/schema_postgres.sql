@@ -65,8 +65,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     monthly_quota  INTEGER NOT NULL DEFAULT 400,       -- 결제주기당 기사 생성 한도
     period_start   TIMESTAMPTZ,                        -- 현재 주기 시작(한도 카운트 기준선)
     period_end     TIMESTAMPTZ,                        -- 만료 시점(이후 비활성)
-    provider       TEXT,                               -- 결제사('toss' 등) — 나중에
-    billing_key_enc TEXT,                              -- 정기결제 빌링키(Fernet 암호화) — 나중에
+    provider       TEXT,                               -- 결제사('toss' 등)
+    billing_key_enc TEXT,                              -- 정기결제 빌링키(Fernet 암호화)
+    customer_key   TEXT,                               -- 토스 구매자 고유 ID(테넌트별, 비추측)
+    charges_count  INTEGER NOT NULL DEFAULT 0,          -- 누적 결제 횟수(0이면 다음 결제는 첫 달 반값)
+    last_paid_at   TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );

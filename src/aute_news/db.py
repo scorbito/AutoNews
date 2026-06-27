@@ -717,7 +717,8 @@ def upsert_subscription(conn, tenant_id: int, **fields) -> None:
     """구독 upsert. 제공된 필드만 갱신(status/plan/monthly_quota/period_*/provider 등)."""
     cols = {k: v for k, v in fields.items()
             if k in ("status", "plan", "monthly_quota", "period_start", "period_end",
-                     "provider", "billing_key_enc")}
+                     "provider", "billing_key_enc", "customer_key", "charges_count",
+                     "last_paid_at")}
     if not cols:
         return
     names = ["tenant_id", *cols.keys()]
@@ -727,6 +728,28 @@ def upsert_subscription(conn, tenant_id: int, **fields) -> None:
         f"INSERT INTO subscriptions ({','.join(names)}) VALUES ({placeholders}) "
         f"ON CONFLICT (tenant_id) DO UPDATE SET {updates}, updated_at=now()",
         (tenant_id, *cols.values()))
+    conn.commit()
+
+
+def save_billing_key(conn, tenant_id: int, billing_key: str, customer_key: str,
+                     provider: str = "toss") -> None:
+    """발급받은 빌링키를 Fernet 암호화해서 저장(+ customer_key, provider)."""
+    upsert_subscription(conn, tenant_id, provider=provider, customer_key=customer_key,
+                        billing_key_enc=crypto.encrypt(billing_key))
+
+
+def get_billing_key(conn, tenant_id: int) -> str | None:
+    """저장된 빌링키(복호화). 없으면 None."""
+    row = conn.execute(
+        "SELECT billing_key_enc FROM subscriptions WHERE tenant_id=?", (tenant_id,)).fetchone()
+    return crypto.decrypt(row["billing_key_enc"]) if row and row.get("billing_key_enc") else None
+
+
+def record_charge(conn, tenant_id: int) -> None:
+    """결제 성공 1건 기록 — charges_count +1, last_paid_at 갱신."""
+    conn.execute(
+        "UPDATE subscriptions SET charges_count=charges_count+1, last_paid_at=now(), "
+        "updated_at=now() WHERE tenant_id=?", (tenant_id,))
     conn.commit()
 
 

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import admin, articlegen, auth, db, subscription, notify
+from .. import admin, articlegen, auth, billing_toss, db, subscription, notify
 from ..config import CATEGORY_CODES
 from ..generator import generate_article, render_markdown
 from ..pipeline import publish_article
@@ -794,13 +794,52 @@ def settings_cms(request: Request, publisher: str = Form("html"),
 # ── 구독·결제 ─────────────────────────────────────────
 @app.get("/billing", response_class=HTMLResponse)
 def billing(request: Request, msg: str = ""):
-    """내 구독 상태·한도 사용량 + 결제(준비 중). 결제 연동은 나중에 이 자리에."""
+    """내 구독 상태·한도 사용량 + 토스 결제(카드 등록 → 정기결제)."""
+    t = _tenant(request)
     conn = db.connect()
-    sub = subscription.status_view(conn, _tenant(request))
+    sub = subscription.status_view(conn, t)
+    raw = db.get_subscription(conn, t) or {}
+    customer_key = subscription.ensure_customer_key(conn, t)
     conn.close()
+    base = str(request.base_url).rstrip("/")
     return templates.TemplateResponse(
         request, "billing.html",
-        {"sub": sub, "msg": msg, "email": request.session.get("email")})
+        {"sub": sub, "msg": msg, "email": request.session.get("email"),
+         "toss_client_key": billing_toss.client_key(),
+         "customer_key": customer_key,
+         "success_url": base + "/billing/toss/confirm",
+         "fail_url": base + "/billing/toss/fail",
+         "next_amount": subscription.charge_amount(raw.get("charges_count", 0)),
+         "monthly_price": subscription.MONTHLY_PRICE,
+         "has_billing_key": bool(raw.get("billing_key_enc"))})
+
+
+@app.get("/billing/toss/confirm")
+def billing_toss_confirm(request: Request, authKey: str = "", customerKey: str = ""):
+    """토스 카드 등록 성공 콜백 → 빌링키 발급 + 첫 결제 + 구독 활성화."""
+    t = _tenant(request)
+    if not authKey:
+        return RedirectResponse("/billing?msg=결제 정보가 올바르지 않습니다", status_code=303)
+    conn = db.connect()
+    try:
+        ck = subscription.ensure_customer_key(conn, t)   # 서버 보관 키 사용(콜백값과 동일)
+        res = subscription.subscribe_with_auth(conn, t, authKey, ck)
+        msg = f"구독이 시작되었습니다 — {res['amount']:,}원 결제 완료"
+    except billing_toss.TossError as e:
+        msg = f"결제 실패: {e.message}"
+    except Exception as e:  # noqa: BLE001
+        msg = f"결제 처리 오류: {type(e).__name__}"
+    finally:
+        conn.close()
+    return RedirectResponse(f"/billing?msg={msg}", status_code=303)
+
+
+@app.get("/billing/toss/fail")
+def billing_toss_fail(request: Request, message: str = "", code: str = ""):
+    """토스 카드 등록 실패/취소 콜백."""
+    return RedirectResponse(
+        f"/billing?msg=결제가 취소되었거나 실패했습니다{(' (' + message + ')') if message else ''}",
+        status_code=303)
 
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)

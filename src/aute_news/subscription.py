@@ -10,18 +10,29 @@
 """
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from . import db
+from . import billing_toss, db
 
 KST = timezone(timedelta(hours=9))
+ORDER_NAME = "뉴스플로우 AI 구독"
 
-# 기본 플랜 값(결제 붙기 전 단일 플랜)
+# 기본 플랜 값(단일 플랜)
 DEFAULT_QUOTA = 400          # 결제주기당 기사 생성 한도
 PERIOD_DAYS = 30             # 1달 구독 주기
 TRIAL_DAYS = 14             # 가입 시 무료 체험 기간
 
+# 가격(원) — 첫 결제 달은 반값, 이후 정상가
+MONTHLY_PRICE = 99000
+FIRST_MONTH_PRICE = 49500
+
 ACTIVE_STATUSES = ("active", "trialing")
+
+
+def charge_amount(charges_count: int) -> int:
+    """이번에 청구할 금액. 첫 결제(charges_count==0)는 반값, 이후 정상가."""
+    return FIRST_MONTH_PRICE if (charges_count or 0) <= 0 else MONTHLY_PRICE
 
 
 def status_view(conn, tenant_id: int) -> dict:
@@ -93,3 +104,61 @@ def start_trial(conn, tenant_id: int, *, days: int = TRIAL_DAYS, quota: int = DE
 def deactivate(conn, tenant_id: int) -> None:
     """구독 비활성화(만료 처리) — 자동·수집·생성 즉시 정지."""
     db.upsert_subscription(conn, tenant_id, status="canceled")
+
+
+# --- 토스 빌링(정기결제) ---
+
+def ensure_customer_key(conn, tenant_id: int) -> str:
+    """토스 구매자 고유 ID. 없으면 생성·저장(프론트 결제창에 넘김)."""
+    sub = db.get_subscription(conn, tenant_id)
+    if sub and sub.get("customer_key"):
+        return sub["customer_key"]
+    ck = "nf_" + secrets.token_hex(16)
+    db.upsert_subscription(conn, tenant_id, customer_key=ck)
+    return ck
+
+
+def subscribe_with_auth(conn, tenant_id: int, auth_key: str, customer_key: str) -> dict:
+    """카드 등록 성공 콜백 처리 — 빌링키 발급 → 첫 결제(첫 달 반값) → 구독 활성화.
+
+    실패 시 billing_toss.TossError 가 그대로 전파된다(호출부에서 처리)."""
+    res = billing_toss.issue_billing_key(auth_key, customer_key)
+    billing_key = res["billingKey"]
+    db.save_billing_key(conn, tenant_id, billing_key, customer_key)
+    sub = db.get_subscription(conn, tenant_id) or {}
+    amount = charge_amount(sub.get("charges_count", 0))
+    order_id = f"nf-{tenant_id}-{secrets.token_hex(8)}"
+    billing_toss.charge(billing_key, customer_key, amount, order_id, ORDER_NAME)
+    db.record_charge(conn, tenant_id)
+    activate(conn, tenant_id)           # 유료 30일 시작
+    return {"amount": amount}
+
+
+def charge_renewal(conn, tenant_id: int) -> bool:
+    """정기 자동청구(cron) — 저장된 빌링키로 청구. 성공 시 30일 연장."""
+    sub = db.get_subscription(conn, tenant_id)
+    if not sub:
+        return False
+    billing_key = db.get_billing_key(conn, tenant_id)
+    customer_key = sub.get("customer_key")
+    if not billing_key or not customer_key:
+        return False
+    amount = charge_amount(sub.get("charges_count", 0))
+    order_id = f"nf-{tenant_id}-{secrets.token_hex(8)}"
+    try:
+        billing_toss.charge(billing_key, customer_key, amount, order_id, ORDER_NAME)
+    except billing_toss.TossError:
+        db.upsert_subscription(conn, tenant_id, status="past_due")
+        return False
+    db.record_charge(conn, tenant_id)
+    activate(conn, tenant_id)           # 다음 30일로 연장
+    return True
+
+
+def due_for_renewal(conn) -> list[int]:
+    """갱신 청구 대상 — 활성(active)이고 빌링키 있고 만료가 지난/임박한 테넌트 id."""
+    rows = conn.execute(
+        "SELECT tenant_id FROM subscriptions "
+        "WHERE status='active' AND billing_key_enc IS NOT NULL "
+        "AND period_end IS NOT NULL AND period_end <= now()").fetchall()
+    return [r["tenant_id"] for r in rows]
