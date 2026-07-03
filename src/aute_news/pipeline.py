@@ -198,10 +198,16 @@ def process_message(conn, message_pk: int, mode: str | None = None,
     body = msg["body_text"] or ""
 
     # 1) LLM 라우터 — 메일 통째로 보고 처리 계획(스킵/본문기사여부/기사링크/다운로드링크).
+    #    첨부 문서의 추출 본문까지 보여줘서 '기사 내용 없는 배포계획·일정표'를 보류(skip)로 판단하게 함.
     #    실패하면 코드 휴리스틱으로 폴백.
     cand = links.extract_link_candidates(body)
+    doc_rows = conn.execute(
+        "SELECT extracted_text FROM attachments WHERE message_pk=? AND tenant_id=? "
+        "AND format IN ('hwp','hwpx','pdf','docx','doc') AND extract_status='done' "
+        "AND extracted_text IS NOT NULL", (message_pk, tenant_id)).fetchall()
+    doc_text = "\n\n".join((r["extracted_text"] or "")[:3000] for r in doc_rows)
     plan = router.plan_email(msg["subject"], msg["sender"], body,
-                             [a["filename"] for a in atts], cand)
+                             [a["filename"] for a in atts], cand, doc_text=doc_text)
     if plan is None:
         dl = links.extract_download_links(body)
         plan = {"skip": False, "body_is_article": True, "reason": "router 실패→휴리스틱",
@@ -209,12 +215,10 @@ def process_message(conn, message_pk: int, mode: str | None = None,
                 "article_links": links.pick_article_urls(
                     [c for c in cand if c["url"] not in set(dl)])}
 
-    # 보도자료 문서(hwp/pdf/docx 등)가 첨부돼 있으면 스킵하지 않는다(자동·수동 공통).
-    # 첨부 문서 = 보도자료 신호 → 제목이 '테스트'라도 LLM 오판으로 버리지 않게.
-    has_doc = any(detect_format(a["filename"] or "") in _DOC_FORMATS for a in atts)
-    if force or has_doc:
+    # 수동 '기사 생성'(force)은 사람이 명시적으로 원한 것 → 트리아지 보류 무시하고 강제 생성.
+    # 자동/예약(cron)은 라우터 판단을 존중: 기사 내용 없는 메타문서(배포계획·일정표)는 보류.
+    if force:
         plan["skip"] = False
-    if force:                       # 사람이 직접 생성 → 본문도 기사 후보로
         plan["body_is_article"] = True
 
     db.set_triage(conn, message_pk, "SKIP" if plan["skip"] else "ROUTED", None,

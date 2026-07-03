@@ -196,7 +196,9 @@ def _collect_mailbox(conn, tenant_id: int, account: str, host: str, email: str,
                     conn, tenant_id=tenant_id, account=account, folder=folder, uid=uid,
                     message_id=msg.headers.get("message-id", (None,))[0] or f"{account}:{folder}:{uid}",
                     subject=msg.subject, sender=msg.from_, date=msg.date_str,
-                    body_text=msg.text or msg.html or "")
+                    body_text=msg.text or msg.html or "",
+                    in_reply_to=(msg.headers.get("in-reply-to", (None,))[0] or None),
+                    mail_references=(msg.headers.get("references", (None,))[0] or None))
                 if pk is None:
                     continue
                 stats["new_messages"] += 1

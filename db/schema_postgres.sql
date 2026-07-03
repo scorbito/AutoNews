@@ -96,6 +96,8 @@ CREATE TABLE messages (
     sender             TEXT,
     date               TEXT,
     body_text          TEXT,
+    in_reply_to        TEXT,                        -- 스레드 헤더(답장 체인) — 후속 자료 병합 대비
+    mail_references     TEXT,
     status             TEXT NOT NULL DEFAULT 'collected',
     pipeline           TEXT,
     triage_confidence  REAL,

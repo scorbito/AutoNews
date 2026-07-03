@@ -219,9 +219,13 @@ def set_last_uid(conn, account: str, folder: str, uid: int,
 def insert_message(conn, **kw) -> int | None:
     """메일 1건 저장. (tenant_id, message_id) 중복이면 건너뜀(None). kw 에 tenant_id 필요."""
     kw.setdefault("tenant_id", DEFAULT_TENANT)
+    kw.setdefault("in_reply_to", None)          # 스레드 헤더(답장 체인) — 후속 병합 대비
+    kw.setdefault("mail_references", None)
     row = conn.execute(
-        """INSERT INTO messages (tenant_id, account, folder, uid, message_id, subject, sender, date, body_text)
-           VALUES (:tenant_id,:account,:folder,:uid,:message_id,:subject,:sender,:date,:body_text)
+        """INSERT INTO messages (tenant_id, account, folder, uid, message_id, subject, sender, date,
+                                 body_text, in_reply_to, mail_references)
+           VALUES (:tenant_id,:account,:folder,:uid,:message_id,:subject,:sender,:date,
+                   :body_text,:in_reply_to,:mail_references)
            ON CONFLICT (tenant_id, message_id) DO NOTHING
            RETURNING id""", kw).fetchone()
     return row["id"] if row else None

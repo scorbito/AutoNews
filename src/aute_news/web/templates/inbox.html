@@ -58,7 +58,7 @@
         {{ m.sender }} · {{ m.date }} ·
         {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
         {% if m.img_count %} · 📷 {{ m.img_count }}{% endif %}
-        {% if m.pipeline == 'SKIP' %} · <span class="tag s-pending">건너뜀(스팸)</span>{% endif %}
+        {% if m.pipeline == 'SKIP' %} · <span class="tag s-pending" title="기사 내용이 없어 보류됨 (배포계획·일정표 등)">보류</span>{% endif %}
       </div>
     </div>
     <div class="msg-actions row">
