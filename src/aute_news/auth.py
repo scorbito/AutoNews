@@ -33,6 +33,25 @@ def supabase_login(email: str, password: str) -> dict | None:
     return {"id": u.get("id"), "email": u.get("email")} if u.get("id") else None
 
 
+def send_recovery_email(email: str, redirect_to: str | None = None) -> bool:
+    """Supabase(GoTrue) 비밀번호 재설정 메일 발송.
+
+    존재하지 않는 이메일이어도 GoTrue 는 200 을 돌려준다(계정 열거 방지). redirect_to 는
+    메일 링크가 돌아올 우리 /reset-password URL(Supabase Auth 의 Redirect URLs 에 등록 필요).
+    """
+    if not SUPABASE_URL or not ANON_KEY:
+        raise RuntimeError("SUPABASE_URL / SUPABASE_ANON_KEY 가 .env 에 없습니다.")
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/recover",
+            headers={"apikey": ANON_KEY, "Content-Type": "application/json"},
+            params={"redirect_to": redirect_to} if redirect_to else None,
+            json={"email": email}, timeout=15)
+    except requests.RequestException:
+        return False
+    return r.status_code < 400
+
+
 def tenant_for_user(conn, user_id: str) -> tuple[int | None, str | None]:
     """user_id(UUID) → (tenant_id, role). 미배정이면 (None, None)."""
     row = conn.execute(

@@ -15,7 +15,15 @@
   {% set nc = nav_counts(request) %}
   <div class="app">
     <aside class="sidebar">
-      <a href="/inbox" class="brand"><span class="logo">📰</span> 뉴스플로우 AI</a>
+      {% set ss = subscription_status(request) %}
+      {% set ssbadge = {'active':'구독중', 'trialing':'무료 체험', 'past_due':'결제 필요',
+                        'canceled':'해지됨', 'inactive':'미구독'} %}
+      <div class="brand-row">
+        <a href="/inbox" class="brand"><span class="logo">📰</span> 뉴스플로우 AI</a>
+        {% if ss %}
+        <a href="/billing" class="brand-sub {{ 'is-trial' if ss.status == 'trialing' else 'is-active' if ss.status == 'active' else 'is-warn' }}">{{ ssbadge.get(ss.status, ss.status) }}</a>
+        {% endif %}
+      </div>
 
       <div class="collect">
         <button type="button" onclick="openCollectConfirm()">📥 메일 수집</button>

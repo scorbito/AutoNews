@@ -26,6 +26,7 @@ TRIAL_DAYS = 14             # 가입 시 무료 체험 기간
 # 가격(원) — 첫 결제 달은 반값, 이후 정상가
 MONTHLY_PRICE = 99000
 FIRST_MONTH_PRICE = 49500
+BANK_TRANSFER_DISCOUNT_RATE = 0.05
 
 ACTIVE_STATUSES = ("active", "trialing")
 
@@ -33,6 +34,13 @@ ACTIVE_STATUSES = ("active", "trialing")
 def charge_amount(charges_count: int) -> int:
     """이번에 청구할 금액. 첫 결제(charges_count==0)는 반값, 이후 정상가."""
     return FIRST_MONTH_PRICE if (charges_count or 0) <= 0 else MONTHLY_PRICE
+
+
+def bank_transfer_amount(charges_count: int) -> int:
+    """무통장입금 권장 금액. 카드 결제액에서 5% 할인 후 1,000원 단위로 내림."""
+    amount = charge_amount(charges_count)
+    discounted = int(amount * (1 - BANK_TRANSFER_DISCOUNT_RATE))
+    return max(0, discounted // 1000 * 1000)
 
 
 def status_view(conn, tenant_id: int) -> dict:

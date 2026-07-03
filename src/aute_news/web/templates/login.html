@@ -20,8 +20,12 @@
              padding: 12px; border-radius: 6px; font-size: 15px; cursor: pointer; }
     .err { background: #fce8e6; color: #c5221f; padding: 10px 12px; border-radius: 6px;
            font-size: 13px; margin-bottom: 8px; }
+    .ok { background: #e6f4ea; color: #137333; padding: 10px 12px; border-radius: 6px;
+          font-size: 13px; margin-bottom: 8px; }
     .alt { text-align: center; font-size: 13px; color: #666; margin-top: 16px; }
     .alt a { color: #3a4fd6; text-decoration: none; }
+    .forgot { text-align: right; margin-top: 8px; }
+    .forgot a { color: #888; font-size: 12.5px; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -30,11 +34,13 @@
     <p class="sub">기자 계정으로 로그인</p>
     {% if error == "1" %}<div class="err">이메일 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}
     {% if error == "2" %}<div class="err">이 계정이 아직 등록되지 않았습니다. 관리자에게 문의하세요.</div>{% endif %}
+    {% if reset == "1" %}<div class="ok">비밀번호가 변경되었습니다. 새 비밀번호로 로그인하세요.</div>{% endif %}
     <form method="post" action="/login">
       <label>이메일</label>
       <input type="email" name="email" required autofocus>
       <label>비밀번호</label>
       <input type="password" name="password" required>
+      <div class="forgot"><a href="/forgot">비밀번호를 잊으셨나요?</a></div>
       <button type="submit">로그인</button>
     </form>
     <p class="alt">계정이 없나요? <a href="/signup">기자 가입하기</a></p>

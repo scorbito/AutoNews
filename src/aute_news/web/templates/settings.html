@@ -6,29 +6,47 @@
   <a href="/logout" class="btn secondary sm">로그아웃</a>
 </div>
 
+{% set s1 = mail.imap_email and mail.imap_host %}
+{% set s2 = (selected|length) > 0 %}
+{% set active_step = '1' if not s1 else ('2' if not s2 else '1') %}
+
 {% if welcome %}
 <div class="card" style="max-width:560px; margin-bottom:16px; background:#f1f6ff; border-color:#cfe0ff;">
   <strong>🎉 가입을 환영합니다!</strong>
   <p class="muted" style="margin:6px 0 0; line-height:1.7;">
-    이제 <b>①</b>에서 수집할 메일 계정을 연결하고, <b>②</b>에서 메일함을 고른 뒤,
-    기사함에서 <b>📥 메일 수집</b>으로 시작하세요. 자동 수집은 <b>③</b>에서 켤 수 있습니다.</p>
+    <b>①</b> 메일 계정 → <b>②</b> 메일함 선택만 하면 시작할 수 있어요. 입력하면 <b>자동 저장</b>됩니다.</p>
 </div>
 {% endif %}
 
-<!-- 1) 내 메일 계정 (기자 개인) -->
-<div class="card" style="max-width:560px; margin-bottom:16px;">
-  <h3><span class="step-no">①</span> 내 메일 계정</h3>
+<p class="muted" style="max-width:560px; margin:0 0 8px; font-size:12.5px;">✍️ 입력·선택하면 <b>자동 저장</b>됩니다 (저장 버튼 없음).</p>
+
+<div class="tabs" data-active="{{ active_step }}" style="max-width:560px;">
+  <button type="button" class="tab {{ 'done' if s1 else '' }}" data-tab="1">① 메일 계정</button>
+  <button type="button" class="tab {{ 'done' if s2 else ('' if s1 else 'lock') }}" data-tab="2">② 메일함</button>
+  <button type="button" class="tab {{ '' if s2 else 'lock' }}" data-tab="3">③ 자동 설정</button>
+  <button type="button" class="tab {{ '' if s2 else 'lock' }}" data-tab="4">④ 발행 설정</button>
+</div>
+
+<p id="doneNote" class="muted" style="max-width:560px; margin:0 0 14px; color:var(--green-fg); {% if not s2 %}display:none;{% endif %}">
+  ✓ 기본 설정 완료! 기사함에서 <b>📥 메일 수집</b>으로 시작할 수 있어요. ③④는 필요할 때만 설정하세요.</p>
+
+<!-- ① 내 메일 계정 -->
+<div class="tab-panel card" data-panel="1" style="max-width:560px;" {% if active_step != '1' %}hidden{% endif %}>
   {% if mailerr %}<p class="block">⚠️ {{ mailerr }}</p>{% endif %}
-  <form method="post" action="/settings/mail">
+  <form id="mailForm" action="/settings/mail" onsubmit="return false;">
     <label>이메일</label>
-    <input type="text" name="imap_email" value="{{ mail.imap_email or '' }}" placeholder="id@naver.com" required>
+    <input type="text" name="imap_email" value="{{ mail.imap_email or '' }}" placeholder="id@naver.com">
     <label>비밀번호 (앱 비밀번호 / IMAP 비번)</label>
     <input type="password" name="imap_password" placeholder="{% if mail.imap_email %}변경 시에만 입력{% else %}앱 비밀번호{% endif %}">
     <label>IMAP 호스트 <span class="muted">(naver·daum·gmail 등은 자동, 모르면 비워두기)</span></label>
     <input type="text" name="imap_host" value="{{ mail.imap_host or '' }}" placeholder="imap.naver.com">
-    <div class="row"><button type="submit">💾 계정 저장 · 폴더 불러오기</button></div>
   </form>
-  <p class="muted" style="margin-top:8px;">저장하면 아래 ②에 그 계정의 메일함 목록이 나타납니다.</p>
+  <p class="muted" style="margin-top:8px;">입력하면 자동 저장됩니다. <b>② 메일함</b> 탭을 누르면 그 계정의 메일함이 자동으로 나타납니다.</p>
+
+  <div class="row" style="gap:8px; margin-top:10px;">
+    <a id="imapLink" href="#" target="_blank" rel="noopener" class="btn secondary sm" style="display:none;">📧 IMAP 설정 페이지 열기</a>
+    <button type="button" id="guideBtn" class="btn secondary sm">📖 설정 방법 보기</button>
+  </div>
 
   <details style="margin-top:10px;">
     <summary style="cursor:pointer; color:#2b6;">🔑 앱 비밀번호(IMAP) 발급 방법 — 처음이면 꼭 읽어주세요</summary>
@@ -49,41 +67,17 @@
   </details>
 </div>
 
-<!-- 2) 수집 폴더 선택 -->
-<div class="card" style="max-width:560px; margin-bottom:16px;">
-  <h3><span class="step-no">②</span> 수집할 메일함 선택</h3>
-  {% if folder_err %}
-    <p class="block">⚠️ {{ folder_err }}</p>
-  {% elif not mail.imap_email %}
-    <p class="muted">먼저 ①에서 메일 계정을 저장하세요.</p>
-  {% elif not folders %}
-    <p class="muted">메일함을 찾지 못했습니다.</p>
-  {% else %}
-  <form method="post" action="/settings/folders">
-    <div style="display:flex; flex-direction:column; gap:6px; margin:8px 0;">
-      {% for f in folders %}
-      <label style="font-weight:normal;">
-        <input type="checkbox" name="folders" value="{{ f.name }}" {% if f.name in selected %}checked{% endif %}>
-        {{ f.label }}{% if f.label != f.name %} <span class="muted">({{ f.name }})</span>{% endif %}
-      </label>
-      {% endfor %}
-    </div>
-    <label style="display:block; margin-top:10px; color:#b35;">
-      <input type="checkbox" name="collect_all" value="1" {% if mail.collect_all %}checked{% endif %}>
-      🧪 테스트: 기간 무시하고 폴더 전체 수집 (날짜 상관없이 모든 메일, 중복은 자동 제외)
-    </label>
-    <div class="row"><button type="submit">💾 폴더 저장</button></div>
-  </form>
-  <p class="muted" style="margin-top:8px;">
-    새로 추가한 메일함은 <b>오늘 0시(KST)</b> 기준 — 그 이전 과거 메일은 건너뛰고
-    오늘 0시 이후 메일부터 수집합니다.</p>
-  {% endif %}
+<!-- ② 수집할 메일함 선택 (폴더는 JS가 불러와 채움) -->
+<div class="tab-panel card" data-panel="2" style="max-width:560px;" {% if active_step != '2' %}hidden{% endif %}>
+  <div id="foldersBox"><p class="muted">메일함을 불러오는 중…</p></div>
 </div>
 
-<!-- 3) 자동 모드 (기자 계정 단위) -->
-<div class="card" style="max-width:560px;">
-  <h3><span class="step-no">③</span> 자동 모드 · 수집 시간</h3>
-  <form method="post" action="/settings">
+<!-- ③ 자동 모드 (선택) -->
+<div class="tab-panel card" data-panel="3" style="max-width:560px;" {% if active_step != '3' %}hidden{% endif %}>
+  {% if not s2 %}
+    <p class="muted">먼저 <b>② 메일함</b>을 선택하세요. (자동 모드는 수집 대상이 있어야 동작)</p>
+  {% else %}
+  <form id="autoForm" action="/settings" onsubmit="return false;">
     <label>자동 모드</label>
     <select name="auto_mode">
       <option value="0" {% if not auto_on %}selected{% endif %}>끄기 (수동: 내가 수집·검토·발행)</option>
@@ -101,19 +95,21 @@
     <div class="muted" style="font-size:12px;">
       여기 적은 발신자의 메일만 <b>자동 발행</b>되고, 그 외 메일은 기사화만 되어 <b>기사함에서 직접 발행</b>합니다.<br>
       이메일 전체·도메인·기관명 일부 모두 가능 (쉼표 구분, 보내는 사람에 포함되면 일치).</div>
-    <div class="row"><button type="submit">💾 저장</button></div>
   </form>
   <p class="muted" style="margin-top:12px;">
     · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
     · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화됩니다.
     발행은 위 <b>자동 발행 발신자</b>가 비어 있으면 전체 자동, 채우면 그 발신자만 자동(나머지는 검토 후 수동).
   </p>
+  {% endif %}
 </div>
 
-<!-- 4) 발행(CMS) 설정 (기자 계정 단위) -->
-<div class="card" style="max-width:560px; margin-top:16px;">
-  <h3><span class="step-no">④</span> 발행(CMS) 설정</h3>
-  <form method="post" action="/settings/cms">
+<!-- ④ 발행(CMS) 설정 (선택) -->
+<div class="tab-panel card" data-panel="4" style="max-width:560px;" {% if active_step != '4' %}hidden{% endif %}>
+  {% if not s2 %}
+    <p class="muted">먼저 <b>② 메일함</b>을 선택하세요.</p>
+  {% else %}
+  <form id="cmsForm" action="/settings/cms" onsubmit="return false;">
     <label>발행 방식</label>
     <select name="publisher">
       <option value="html" {% if publisher=='html' %}selected{% endif %}>내보내기(HTML) — CMS 없이 미리보기만</option>
@@ -122,22 +118,19 @@
     </select>
     <div class="muted" style="font-size:12px;">
       · <b>ND소프트</b> 기반 신문사면 ND소프트 CMS<br>
-      · <b>워드프레스</b> 사이트면 wordpress — 아래 아이디는 WP 사용자명, 비밀번호는
-      <b>응용 프로그램 비밀번호</b>(WP 사용자 → 프로필 → 응용 프로그램 비밀번호에서 발급),
-      섹션코드 칸엔 기본 <b>카테고리 ID(숫자)</b>를 넣으세요(비우면 기본).</div>
+      · <b>워드프레스</b> 사이트면 wordpress — 아이디는 WP 사용자명, 비밀번호는
+      <b>응용 프로그램 비밀번호</b>(WP 사용자 → 프로필 → 응용 프로그램 비밀번호에서 발급).</div>
 
     <div id="cms-fields" style="margin-top:10px;">
       <label>사이트 주소</label>
       <input type="text" name="ndsoft_base_url" value="{{ ndsoft_base_url }}" placeholder="https://www.atpaju.com">
-      <label>CMS 아이디</label>
-      <input type="text" name="cms_user" value="{{ cms_user }}" placeholder="CMS 로그인 아이디">
-      <label>CMS 비밀번호</label>
-      <input type="password" name="cms_password" placeholder="{% if has_cms_password %}변경 시에만 입력{% else %}CMS 로그인 비밀번호{% endif %}">
+      <label>사이트 아이디</label>
+      <input type="text" name="cms_user" value="{{ cms_user }}" placeholder="사이트 로그인 아이디">
+      <label>사이트 비밀번호</label>
+      <input type="password" name="cms_password" placeholder="{% if has_cms_password %}변경 시에만 입력{% else %}사이트 로그인 비밀번호{% endif %}">
       <label>기자 이메일 <span class="muted">(비우면 위 메일 계정 주소 사용)</span></label>
       <input type="text" name="cms_user_email" value="{{ cms_user_email or mail.imap_email or '' }}"
              placeholder="{{ mail.imap_email or 'reporter@paper.com' }}">
-      <label>기본 섹션코드 <span class="muted">(예: S1N10)</span></label>
-      <input type="text" name="cms_section" value="{{ cms_section }}" placeholder="S1N10">
 
       <label style="font-weight:normal; display:block; margin-top:12px;">
         <input type="checkbox" name="cms_auto_submit" value="1" {% if cms_auto_submit %}checked{% endif %}>
@@ -146,9 +139,156 @@
       <div class="muted" style="font-size:12px;">
         켜면 발행 시 기사가 바로 승인요청 단계로 넘어가 CMS에서 수정 불가가 됩니다.</div>
     </div>
-    <div class="row"><button type="submit">💾 CMS 설정 저장</button></div>
   </form>
   <p class="muted" style="margin-top:10px; font-size:12px;">
-    ※ CMS 연동이 어려우면 관리자에게 요청하세요 — 대신 설정해 드립니다.</p>
+    ※ 발행 사이트 연동이 어려우면 관리자에게 요청하세요 — 대신 설정해 드립니다.</p>
+  {% endif %}
 </div>
+
+<!-- IMAP 설정 방법 이미지 모달 (1단계 → 2단계) -->
+<div id="imapGuide" class="modal-ov">
+  <div class="modal modal-wide">
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">IMAP 설정 방법 <span class="muted" id="igStep" style="font-size:13px; font-weight:500;">1 / 2</span></h3>
+      <button type="button" id="igClose" class="btn ghost sm">✕</button>
+    </div>
+    <img id="igImg" src="/static/imap1.png" alt="IMAP 설정 방법"
+         style="display:block; max-width:100%; max-height:80vh; height:auto; border-radius:8px; border:1px solid var(--border);">
+    <div class="row" style="justify-content:space-between; margin-top:12px;">
+      <button type="button" id="igPrev" class="btn secondary sm">← 이전</button>
+      <button type="button" id="igNext" class="btn sm">다음 →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const AJ = { 'X-Requested-With': 'fetch' };
+    const wrap = document.querySelector('.tabs');
+    const tabs = wrap ? wrap.querySelectorAll('.tab') : [];
+    const panels = document.querySelectorAll('.tab-panel');
+    const tabByN = n => wrap.querySelector('.tab[data-tab="' + n + '"]');
+
+    // ── 저장됨 토스트 ──
+    let tT;
+    function toast(msg, bad) {
+      let el = document.getElementById('saveToast');
+      if (!el) { el = document.createElement('div'); el.id = 'saveToast'; el.className = 'save-toast'; document.body.appendChild(el); }
+      el.textContent = msg; el.classList.toggle('bad', !!bad); el.classList.add('show');
+      clearTimeout(tT); tT = setTimeout(() => el.classList.remove('show'), 1400);
+    }
+    async function post(url, fd) {
+      try {
+        const r = await fetch(url, { method: 'POST', headers: AJ, body: fd });
+        toast(r.ok ? '저장됨 ✓' : '저장 실패', !r.ok);
+        return r.ok;
+      } catch (_) { toast('저장 실패', true); return false; }
+    }
+    function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    // ── ① 메일: 필드 바뀌면 자동 저장 (이메일 있을 때만) ──
+    const mailForm = document.getElementById('mailForm');
+    async function saveMail() {
+      if (!mailForm) return false;
+      const em = mailForm.querySelector('[name=imap_email]').value.trim();
+      if (!em) return false;
+      const ok = await post('/settings/mail', new FormData(mailForm));
+      if (ok) { tabByN('1').classList.add('done'); tabByN('2').classList.remove('lock'); }
+      return ok;
+    }
+    if (mailForm) mailForm.addEventListener('change', saveMail);
+
+    // ── ② 메일함: 탭 열 때 지연 로딩, 선택 즉시 저장 ──
+    function saveFolders() {
+      const box = document.getElementById('foldersBox');
+      const fd = new FormData();
+      box.querySelectorAll('input[name="folders"]:checked').forEach(c => fd.append('folders', c.value));
+      const ca = box.querySelector('input[name="collect_all"]');
+      if (ca && ca.checked) fd.append('collect_all', '1');
+      const any = box.querySelectorAll('input[name="folders"]:checked').length > 0;
+      post('/settings/folders', fd);
+      tabByN('2').classList.toggle('done', any);
+      tabByN('3').classList.toggle('lock', !any);
+      tabByN('4').classList.toggle('lock', !any);
+      const dn = document.getElementById('doneNote'); if (dn) dn.style.display = any ? '' : 'none';
+    }
+    async function loadFolders() {
+      const box = document.getElementById('foldersBox');
+      box.innerHTML = '<p class="muted">메일함을 불러오는 중…</p>';
+      let j;
+      try { j = await (await fetch('/settings/folders.json', { headers: AJ })).json(); }
+      catch (_) { box.innerHTML = '<p class="block">⚠️ 폴더를 불러오지 못했습니다.</p>'; return; }
+      if (!j.ok) {
+        box.innerHTML = j.error === 'no_mail'
+          ? '<p class="muted">먼저 <b>① 메일 계정</b> 탭에서 계정을 입력하세요.</p>'
+          : '<p class="block">⚠️ ' + esc(j.error || '폴더를 불러오지 못했습니다') + '</p>';
+        return;
+      }
+      let h = '<div style="display:flex;flex-direction:column;gap:6px;margin:8px 0;">';
+      j.folders.forEach(f => {
+        const ck = j.selected.indexOf(f.name) >= 0 ? 'checked' : '';
+        const lab = f.label !== f.name ? esc(f.label) + ' <span class="muted">(' + esc(f.name) + ')</span>' : esc(f.label);
+        h += '<label style="font-weight:normal;"><input type="checkbox" name="folders" value="' + esc(f.name) + '" ' + ck + '> ' + lab + '</label>';
+      });
+      h += '</div><label style="display:block;margin-top:10px;color:#b35;"><input type="checkbox" name="collect_all" value="1" ' + (j.collect_all ? 'checked' : '') + '> 🧪 테스트: 기간 무시하고 폴더 전체 수집</label>';
+      h += '<p class="muted" style="margin-top:8px;">새로 추가한 메일함은 오늘 0시(KST) 이후 도착분부터 수집합니다. (선택 즉시 저장)</p>';
+      box.innerHTML = h;
+      box.querySelectorAll('input').forEach(i => i.addEventListener('change', saveFolders));
+    }
+
+    // ── ③④ 자동 저장 ──
+    ['autoForm', 'cmsForm'].forEach(id => {
+      const f = document.getElementById(id);
+      if (f) f.addEventListener('change', () => post(f.action, new FormData(f)));
+    });
+
+    // ── IMAP 설정 페이지 딥링크 (이메일 도메인 기준) ──
+    const IMAP_URLS = {
+      'naver.com': 'https://mail.naver.com/',
+      'daum.net': 'https://mail.daum.net/',
+      'hanmail.net': 'https://mail.daum.net/',
+      'gmail.com': 'https://mail.google.com/mail/u/0/#settings/fwdandpop',
+      'nate.com': 'https://mail.nate.com/',
+      'outlook.com': 'https://outlook.live.com/mail/0/options/mail/accounts',
+      'hotmail.com': 'https://outlook.live.com/mail/0/options/mail/accounts'
+    };
+    const imapLink = document.getElementById('imapLink');
+    function updateImapLink() {
+      if (!imapLink || !mailForm) return;
+      const em = (mailForm.querySelector('[name=imap_email]').value || '').trim().toLowerCase();
+      const url = IMAP_URLS[em.split('@')[1] || ''];
+      if (url) { imapLink.href = url; imapLink.style.display = ''; } else { imapLink.style.display = 'none'; }
+    }
+    if (mailForm) mailForm.addEventListener('input', updateImapLink);
+    updateImapLink();
+
+    // ── 설정 방법 이미지 모달 (1단계 → 2단계) ──
+    const IG = ['/static/imap1.png', '/static/imap2.png'];
+    let igN = 1;
+    const gModal = document.getElementById('imapGuide');
+    function igRender() {
+      document.getElementById('igImg').src = IG[igN - 1];
+      document.getElementById('igStep').textContent = igN + ' / ' + IG.length;
+      document.getElementById('igPrev').style.visibility = igN > 1 ? 'visible' : 'hidden';
+      document.getElementById('igNext').textContent = igN < IG.length ? '다음 →' : '완료';
+    }
+    function gClose() { gModal.style.display = 'none'; }
+    const guideBtn = document.getElementById('guideBtn');
+    if (guideBtn) guideBtn.addEventListener('click', () => { igN = 1; igRender(); gModal.style.display = 'flex'; });
+    document.getElementById('igClose').addEventListener('click', gClose);
+    document.getElementById('igPrev').addEventListener('click', () => { if (igN > 1) { igN--; igRender(); } });
+    document.getElementById('igNext').addEventListener('click', () => { if (igN < IG.length) { igN++; igRender(); } else gClose(); });
+    gModal.addEventListener('click', e => { if (e.target === gModal) gClose(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') gClose(); });
+
+    // ── 탭 전환 ──
+    async function show(n) {
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === n));
+      panels.forEach(p => { p.hidden = (p.dataset.panel !== n); });
+      if (n === '2') { await saveMail(); loadFolders(); }   // 메일 먼저 저장 → 폴더 로딩
+    }
+    tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.tab)));
+    show(wrap ? (wrap.dataset.active || '1') : '1');
+  })();
+</script>
 {% endblock %}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>비밀번호 찾기 — 뉴스플로우 AI</title>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <style>
+    body { font-family: "Pretendard Variable", "Pretendard", -apple-system, "Malgun Gothic", sans-serif; background: #f5f6f8;
+           display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
+    .box { background: #fff; padding: 36px 32px; border-radius: 12px; width: 340px;
+           box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #888; font-size: 13px; margin: 0 0 20px; line-height: 1.6; }
+    label { font-size: 13px; color: #666; display: block; margin: 12px 0 4px; }
+    input { width: 100%; padding: 11px; border: 1px solid #ccc; border-radius: 6px;
+            font-size: 14px; box-sizing: border-box; }
+    button { width: 100%; margin-top: 20px; background: #3a4fd6; color: #fff; border: 0;
+             padding: 12px; border-radius: 6px; font-size: 15px; cursor: pointer; }
+    .ok { background: #e6f4ea; color: #137333; padding: 12px 14px; border-radius: 6px;
+          font-size: 13px; line-height: 1.6; }
+    .alt { text-align: center; font-size: 13px; color: #666; margin-top: 16px; }
+    .alt a { color: #3a4fd6; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔑 비밀번호 찾기</h1>
+    {% if sent == "1" %}
+    <p class="sub">가입한 이메일 주소로 <b>비밀번호 재설정 링크</b>를 요청했습니다.</p>
+    <div class="ok">📧 해당 이메일로 재설정 메일을 보냈습니다. 메일함(스팸함 포함)을 확인해 링크로 새 비밀번호를 설정하세요.
+      <br>* 가입되지 않은 주소면 메일이 오지 않습니다.</div>
+    <p class="alt"><a href="/login">← 로그인으로</a></p>
+    {% else %}
+    <p class="sub">가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드립니다.</p>
+    <form method="post" action="/forgot">
+      <label>이메일</label>
+      <input type="email" name="email" required autofocus placeholder="id@example.com">
+      <button type="submit">재설정 메일 보내기</button>
+    </form>
+    <p class="alt"><a href="/login">← 로그인으로</a></p>
+    {% endif %}
+  </div>
+</body>
+</html>

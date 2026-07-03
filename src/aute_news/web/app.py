@@ -86,6 +86,23 @@ def _job_queue(request: Request) -> list:
 templates.env.globals["job_queue"] = _job_queue
 
 
+def _subscription_status(request: Request) -> dict | None:
+    """사이드바 구독 상태. 비로그인/실패 시 표시하지 않음."""
+    tid = request.session.get("tenant_id")
+    if not tid:
+        return None
+    try:
+        conn = db.connect()
+        sub = subscription.status_view(conn, tid)
+        conn.close()
+        return sub
+    except Exception:  # noqa: BLE001 (전역 표시 실패가 화면 전체를 막지 않게)
+        return None
+
+
+templates.env.globals["subscription_status"] = _subscription_status
+
+
 def _static_ver() -> str:
     """app.css 수정시각 → 캐시 버스팅 버전(브라우저가 옛 CSS 캐시하는 문제 방지)."""
     try:
@@ -104,7 +121,7 @@ AFILTERS = [("all", "전체"), ("drafted", "초안"), ("reviewed", "검토완료
 FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
            ("reviewed", "검토완료"), ("published", "발행됨")]
 
-_PUBLIC_PATHS = ("/login", "/logout", "/signup")
+_PUBLIC_PATHS = ("/login", "/logout", "/signup", "/forgot", "/reset-password")
 
 
 @app.middleware("http")
@@ -161,8 +178,8 @@ def md_to_html(text: str) -> str:
 
 # ── 인증 ──────────────────────────────────────────────
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, error: str = ""):
-    return templates.TemplateResponse(request, "login.html", {"error": error})
+def login_form(request: Request, error: str = "", reset: str = ""):
+    return templates.TemplateResponse(request, "login.html", {"error": error, "reset": reset})
 
 
 @app.post("/login")
@@ -185,6 +202,30 @@ def login_post(request: Request, email: str = Form(...), password: str = Form(..
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+def forgot_form(request: Request, sent: str = ""):
+    return templates.TemplateResponse(request, "forgot.html", {"sent": sent})
+
+
+@app.post("/forgot")
+def forgot_post(request: Request, email: str = Form(...)):
+    """비밀번호 재설정 메일 발송 요청. 계정 열거 방지 위해 결과와 무관하게 동일 안내."""
+    base = os.getenv("SITE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+    try:
+        auth.send_recovery_email(email.strip(), f"{base}/reset-password")
+    except Exception as e:  # noqa: BLE001 (메일 발송 실패도 사용자에겐 동일 안내)
+        notify.log_error("비밀번호 재설정 메일", str(e))
+    return RedirectResponse("/forgot?sent=1", status_code=303)
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_form(request: Request):
+    """메일 링크로 진입 — 토큰은 URL 프래그먼트(#)에 있어 클라이언트 JS가 처리."""
+    return templates.TemplateResponse(
+        request, "reset_password.html",
+        {"supabase_url": auth.SUPABASE_URL, "anon_key": auth.ANON_KEY})
 
 
 @app.get("/signup", response_class=HTMLResponse)
@@ -696,30 +737,25 @@ def jobs_active(request: Request):
     return {"status": j["status"], "message": j["message"], "pending": pend}
 
 
+def _is_ajax(request: Request) -> bool:
+    return request.headers.get("x-requested-with", "").lower() == "fetch"
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
-    from ..collector import list_imap_folders
     uid = request.session["user_id"]
     conn = db.connect()
     cfg = db.get_tenant_config(conn, _tenant(request)) or {}
     mail = db.get_user_mail(conn, uid) or {}
     conn.close()
-    # 메일 계정이 등록돼 있으면 라이브로 폴더 목록을 받아 체크박스로 보여줌
-    folders, folder_err = [], ""
-    if mail.get("imap_host") and mail.get("imap_email") and mail.get("imap_password"):
-        try:
-            folders = list_imap_folders(mail["imap_host"], mail["imap_email"], mail["imap_password"])
-        except Exception as e:  # noqa: BLE001
-            folder_err = f"폴더 목록을 못 받았습니다: {type(e).__name__} (계정/비번 확인)"
+    # 폴더 목록은 ②탭 열 때 /settings/folders.json 으로 지연 로딩(페이지 렌더는 빠르게)
     selected = {f.strip() for f in (mail.get("imap_folders") or "").split(",") if f.strip()}
     auto_on = bool(cfg.get("collect_enabled")) and (cfg.get("pipeline_mode") == "auto")
     return templates.TemplateResponse(
         request, "settings.html",
         {"auto_on": auto_on, "collect_times": cfg.get("collect_times") or "",
          "auto_publish_senders": cfg.get("auto_publish_senders") or "",
-         "mail": mail, "folders": folders, "selected": selected,
-         "folder_err": folder_err, "mailerr": mailerr,
-         "mail_enabled": bool(mail.get("collect_enabled")),
+         "mail": mail, "selected": selected, "mailerr": mailerr,
          "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
          "publisher": cfg.get("publisher") or "html",
          "ndsoft_base_url": cfg.get("ndsoft_base_url") or "",
@@ -728,6 +764,24 @@ def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
          "cms_section": cfg.get("cms_section") or "",
          "has_cms_password": bool(cfg.get("cms_password")),
          "welcome": welcome == "1", "email": request.session.get("email")})
+
+
+@app.get("/settings/folders.json")
+def settings_folders_json(request: Request):
+    """②탭용 — 저장된 메일 계정으로 IMAP 폴더 목록 + 현재 선택을 반환(지연 로딩)."""
+    from ..collector import list_imap_folders
+    conn = db.connect()
+    mail = db.get_user_mail(conn, request.session["user_id"]) or {}
+    conn.close()
+    if not (mail.get("imap_host") and mail.get("imap_email") and mail.get("imap_password")):
+        return {"ok": False, "error": "no_mail"}
+    selected = [f.strip() for f in (mail.get("imap_folders") or "").split(",") if f.strip()]
+    try:
+        folders = list_imap_folders(mail["imap_host"], mail["imap_email"], mail["imap_password"])
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"폴더 목록을 못 받았습니다 ({type(e).__name__}) — 계정/비번 확인"}
+    return {"ok": True, "collect_all": bool(mail.get("collect_all")), "selected": selected,
+            "folders": [{"name": f["name"], "label": f["label"]} for f in folders]}
 
 
 @app.post("/settings/mail")
@@ -742,6 +796,8 @@ def settings_mail(request: Request, imap_email: str = Form(...),
                      imap_password=imap_password or None)
     conn.close()
     err = "" if host else "도메인을 알 수 없어 IMAP 호스트를 입력해야 합니다."
+    if _is_ajax(request):
+        return {"ok": bool(host), "warn": err}
     return RedirectResponse(f"/settings?mailerr={err}", status_code=303)
 
 
@@ -755,6 +811,8 @@ async def settings_folders(request: Request):
     db.set_user_mail(conn, request.session["user_id"], _tenant(request),
                      imap_folders=folders, collect_enabled=1, collect_all=collect_all)
     conn.close()
+    if _is_ajax(request):
+        return {"ok": True}
     return RedirectResponse("/settings", status_code=303)
 
 
@@ -769,6 +827,8 @@ def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: s
                          collect_times=collect_times.strip(),
                          auto_publish_senders=auto_publish_senders.strip())
     conn.close()
+    if _is_ajax(request):
+        return {"ok": True}
     return RedirectResponse("/settings", status_code=303)
 
 
@@ -776,18 +836,21 @@ def settings_save(request: Request, auto_mode: str = Form("0"), collect_times: s
 def settings_cms(request: Request, publisher: str = Form("html"),
                  ndsoft_base_url: str = Form(""), cms_user: str = Form(""),
                  cms_password: str = Form(""), cms_user_email: str = Form(""),
-                 cms_section: str = Form(""), cms_auto_submit: str = Form("0")):
-    """기자(신문사) 본인이 CMS 발행 설정을 직접 저장 — 셀프 온보딩."""
+                 cms_auto_submit: str = Form("0")):
+    """기자(신문사) 본인이 발행 사이트 설정을 직접 저장 — 셀프 온보딩.
+
+    섹션코드는 이 화면에서 제거(관리자에서만 설정) — 기존 값/기본값 유지."""
     conn = db.connect()
     db.set_tenant_config(conn, _tenant(request),
                          publisher=publisher or "html",
                          ndsoft_base_url=ndsoft_base_url.strip(),
                          cms_user=cms_user.strip(),
                          cms_user_email=cms_user_email.strip(),
-                         cms_section=cms_section.strip(),
                          cms_auto_submit=1 if cms_auto_submit == "1" else 0,
                          cms_password=(cms_password or None))
     conn.close()
+    if _is_ajax(request):
+        return {"ok": True}
     return RedirectResponse("/settings", status_code=303)
 
 
@@ -811,6 +874,11 @@ def billing(request: Request, msg: str = ""):
          "fail_url": base + "/billing/toss/fail",
          "next_amount": subscription.charge_amount(raw.get("charges_count", 0)),
          "monthly_price": subscription.MONTHLY_PRICE,
+         "bank_amount": subscription.bank_transfer_amount(raw.get("charges_count", 0)),
+         "bank_discount_rate": int(subscription.BANK_TRANSFER_DISCOUNT_RATE * 100),
+         "bank_name": os.getenv("BANK_TRANSFER_BANK", "입금 계좌 준비 중"),
+         "bank_account": os.getenv("BANK_TRANSFER_ACCOUNT", ""),
+         "bank_holder": os.getenv("BANK_TRANSFER_HOLDER", ""),
          "has_billing_key": bool(raw.get("billing_key_enc"))})
 
 
@@ -841,6 +909,41 @@ def billing_toss_fail(request: Request, message: str = "", code: str = ""):
         f"/billing?msg=결제가 취소되었거나 실패했습니다{(' (' + message + ')') if message else ''}",
         status_code=303)
 
+
+@app.post("/billing/bank-transfer")
+def billing_bank_transfer(request: Request, depositor: str = Form(...),
+                          amount: int = Form(...), memo: str = Form("")):
+    """무통장입금 후 입금확인 요청을 관리자 문의함과 알림으로 전달."""
+    t = _tenant(request)
+    email = request.session.get("email")
+    depositor = depositor.strip()
+    memo = memo.strip()
+    if not depositor or amount <= 0:
+        return RedirectResponse("/billing?msg=입금자명과 입금액을 확인해 주세요", status_code=303)
+    conn = db.connect()
+    expected_amount = subscription.bank_transfer_amount(
+        (db.get_subscription(conn, t) or {}).get("charges_count", 0))
+    body = (
+        f"입금자명: {depositor}\n"
+        f"입금액: {amount:,}원\n"
+        f"무통장 권장 금액: {expected_amount:,}원\n"
+        f"요청자: {email or '-'}\n"
+        f"테넌트 ID: {t}\n"
+        f"메모: {memo or '-'}\n\n"
+        "관리자 확인 후 /admin에서 해당 테넌트 구독을 수동 활성화해 주세요."
+    )
+    iid = db.create_inquiry(
+        conn, t, request.session.get("user_id"), email,
+        "입금확인", f"무통장 입금확인 요청 - {depositor}", body)
+    conn.close()
+    notify.alert_operator(
+        f"💰 무통장 입금확인 요청\n"
+        f"테넌트: {t}\n요청자: {email or '-'}\n"
+        f"입금자명: {depositor}\n입금액: {amount:,}원\n"
+        f"권장금액: {expected_amount:,}원\n문의 #{iid}")
+    return RedirectResponse(
+        "/billing?msg=입금확인 요청을 보냈습니다. 관리자가 확인 후 구독을 활성화합니다.",
+        status_code=303)
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)
 def article_detail(request: Request, article_id: int):

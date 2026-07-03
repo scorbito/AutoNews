@@ -43,7 +43,7 @@
 </div>
 
 <div class="card" style="max-width:520px; margin-top:14px;">
-  <h3 style="margin:0 0 8px;">결제</h3>
+  <h3 style="margin:0 0 8px;">카드 결제</h3>
   <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.7;">
     월 <b>{{ "{:,}".format(monthly_price) }}원</b> · 첫 결제 <b>{{ "{:,}".format(next_amount) }}원</b>
     {% if next_amount < monthly_price %}<b style="color:#3a4fd6;">(첫 달 반값)</b>{% endif %}<br>
@@ -57,6 +57,29 @@
   {% else %}
   <p class="muted" style="font-size:13px;">결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.</p>
   {% endif %}
+</div>
+
+<div class="card" style="max-width:520px; margin-top:14px;">
+  <h3 style="margin:0 0 8px;">무통장입금</h3>
+  <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.7;">
+    카드 결제가 어려우신 경우 아래 계좌로 입금 후 입금확인 요청을 보내 주세요.<br>
+    무통장입금은 카드 수수료 절감분을 반영해 <b>{{ bank_discount_rate }}% 할인</b>됩니다.
+  </p>
+  <div class="block" style="font-size:14px; line-height:1.8;">
+    <b>입금액</b>: <b>{{ "{:,}".format(bank_amount) }}원</b><br>
+    <b>은행</b>: {{ bank_name }}<br>
+    <b>계좌번호</b>: {{ bank_account or '관리자에게 문의해 주세요' }}<br>
+    <b>예금주</b>: {{ bank_holder or '관리자에게 문의해 주세요' }}
+  </div>
+  <form method="post" action="/billing/bank-transfer" style="margin-top:12px;">
+    <label>입금자명</label>
+    <input type="text" name="depositor" required placeholder="실제 입금자명을 입력해 주세요">
+    <label>입금액</label>
+    <input type="number" name="amount" min="1" required value="{{ bank_amount }}">
+    <label>메모</label>
+    <textarea name="memo" style="min-height:80px;" placeholder="입금 예정일, 요청사항 등을 적어 주세요"></textarea>
+    <div class="row" style="margin-top:10px;"><button type="submit">입금확인 요청</button></div>
+  </form>
 </div>
 
 {% if toss_client_key %}
