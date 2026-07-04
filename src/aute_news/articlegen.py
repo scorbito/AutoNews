@@ -19,6 +19,27 @@ from .llm import get_llm, load_prompt
 # 기사 생성은 품질 우선 — 기본 flash(나머지 단계는 LLM_MODEL=flash-lite).
 GENERATE_MODEL = "gemini-2.5-flash"
 
+# 기사 스타일 프리셋 — 톤·길이·구조만 바꾼다(사실 정확성은 시스템 프롬프트가 최우선).
+STYLE_PROMPTS = {
+    "standard": "",   # 표준 스트레이트(기본) — 추가 지시 없음
+    "deep": "상세·심층형: 자료에 있는 배경·맥락·의미를 충분히 풀어 길고 깊게 쓴다. "
+            "단 자료에 없는 사실·수치·발언은 절대 만들지 않는다.",
+    "brief": "단신형: 핵심만 3~4문장으로 아주 짧게. 부연·수식어를 최소화한다.",
+    "local": "지역 밀착·친근형: 딱딱한 관공서 문투를 줄이고 주민이 읽기 쉬운 자연스러운 문장으로 쓴다. "
+             "단 사실·수치·기관명은 정확히 유지한다.",
+    "quote": "인용 강조형: 관계자·담당자의 발언(직접 인용문)을 중심으로 구성한다. "
+             "자료에 인용문이 없으면 지어내지 말고 사실 전달 문장으로 대체한다.",
+}
+
+
+def _style_instruction(style_key: str | None, custom_text: str = "") -> str:
+    """설정된 스타일 → 프롬프트에 넣을 지시 문자열(없으면 '')."""
+    if (style_key or "") == "custom" and (custom_text or "").strip():
+        return ("사용자 지정 문체 취향: " + custom_text.strip()[:500] +
+                " — 단, 이 문체는 톤·표현에만 적용하고 자료에 없는 사실을 지어내거나 왜곡하지 말 것. "
+                "사실 정확성이 최우선이다.")
+    return STYLE_PROMPTS.get(style_key or "standard", "")
+
 _META_HDR = re.compile(r"^[\s]*[■□▶◆▪◇★◎●]\s*\S")
 _META_ITEM = re.compile(r"^[\s]*[-•⦁·∙]\s*[^:：]{1,30}\s*[:：]")
 _URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
@@ -60,8 +81,9 @@ def promo_postprocess(body_html: str, source_text: str, article_type: str) -> st
 
 
 def generate(body_text: str, *, email_subject: str = "", email_from: str = "",
-             email_date: str = "", images_meta: list[dict] | None = None) -> dict:
-    """원문 텍스트 → Generate 스키마 dict."""
+             email_date: str = "", images_meta: list[dict] | None = None,
+             style: str = "") -> dict:
+    """원문 텍스트 → Generate 스키마 dict. style: 문체 지시(선택)."""
     system, _ = load_prompt("Generate")
     today = datetime.date.today()
     images_meta = images_meta or []
@@ -83,6 +105,8 @@ def generate(body_text: str, *, email_subject: str = "", email_from: str = "",
 - 이미지 개수: {len(images_meta)}
 - 이미지 목록:
 {img_lines}"""
+    if style:
+        user += ("\n\n## 작성 스타일 지시 (톤·문체만; 사실은 위 규칙대로 정확히)\n" + style)
     model = os.getenv("GENERATE_MODEL", GENERATE_MODEL)
     return get_llm(model).complete_json(system, user, temperature=0.3)
 
@@ -105,8 +129,11 @@ def generate_for_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENA
     images_meta = [{"fileName": __import__("os").path.basename(i["path"] or ""),
                     "source": "email_attachment"} for i in imgs]
 
+    cfg = db.get_tenant_config(conn, tenant_id) or {}
+    style = _style_instruction(cfg.get("article_style"), cfg.get("article_style_custom") or "")
     res = generate(art["body"] or "", email_subject=subject or art["title"] or "",
-                   email_from=sender or "", email_date=date or "", images_meta=images_meta)
+                   email_from=sender or "", email_date=date or "", images_meta=images_meta,
+                   style=style)
 
     body_html = promo_postprocess(res.get("article_body_html", ""),
                                   art["body"] or "", res.get("article_type", ""))

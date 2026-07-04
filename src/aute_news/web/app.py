@@ -658,6 +658,56 @@ def collect_now(request: Request, background: BackgroundTasks):
     return RedirectResponse(f"/inbox?msg={blocked}" if blocked else "/inbox", status_code=303)
 
 
+# ── 직접 기사 작성 (메일 없이 자료 입력 → 합성 message → 동일 파이프라인) ──
+class _Upload:
+    """collector._store_attachment 이 기대하는 최소 인터페이스(.filename/.payload)."""
+    def __init__(self, filename: str, payload: bytes) -> None:
+        self.filename = filename
+        self.payload = payload
+
+
+@app.get("/compose", response_class=HTMLResponse)
+def compose_form(request: Request, err: str = ""):
+    return templates.TemplateResponse(request, "compose.html", {"err": err})
+
+
+@app.post("/compose")
+async def compose_post(request: Request, background: BackgroundTasks):
+    """텍스트·문서·링크·이미지를 합성 메일로 만들어 기사함에 넣고 기사 생성 큐에 적재."""
+    import uuid
+    import datetime as _dt
+    from ..collector import _store_attachment
+    t = _tenant(request)
+    form = await request.form()
+    title = (form.get("title") or "").strip()
+    body = (form.get("body") or "").strip()
+    links = (form.get("links") or "").strip()
+    body_full = (body + ("\n\n" + links if links else "")).strip()
+    files = [f for f in form.getlist("files") if getattr(f, "filename", "")]
+    images_up = [f for f in form.getlist("images") if getattr(f, "filename", "")]
+    if not (body_full or files or images_up):
+        return RedirectResponse("/compose?err=1", status_code=303)
+
+    now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=9)))
+    conn = db.connect()
+    pk = db.insert_message(
+        conn, tenant_id=t, account="manual", folder="manual", uid=0,
+        message_id=f"manual:{t}:{uuid.uuid4().hex[:12]}",
+        subject=title or "(직접 작성)", sender=request.session.get("email") or "직접 작성",
+        date=now.strftime("%a, %d %b %Y %H:%M:%S +0900"), body_text=body_full)
+    stats = {"attachments": 0, "extracted": 0, "manual": 0}
+    for idx, up in enumerate(files + images_up, start=1):
+        try:
+            data = await up.read()
+            _store_attachment(conn, t, "manual", idx, pk, _Upload(up.filename, data), stats)
+        except Exception as e:  # noqa: BLE001 (한 파일 실패해도 나머지·본문은 진행)
+            notify.log_error("직접작성 첨부", f"{up.filename}: {type(e).__name__}: {e}", t)
+    conn.commit()
+    conn.close()
+    _enqueue(request, background, "process", 1, payload=str(pk), target=str(pk))
+    return RedirectResponse("/inbox", status_code=303)
+
+
 @app.post("/messages/bulk-process")
 def messages_bulk_process(request: Request, background: BackgroundTasks,
                           ids: Annotated[list[int], Form()] = []):
@@ -763,6 +813,8 @@ def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
          "cms_user_email": cfg.get("cms_user_email") or "",
          "cms_section": cfg.get("cms_section") or "",
          "has_cms_password": bool(cfg.get("cms_password")),
+         "article_style": cfg.get("article_style") or "standard",
+         "article_style_custom": cfg.get("article_style_custom") or "",
          "welcome": welcome == "1", "email": request.session.get("email")})
 
 
@@ -848,6 +900,20 @@ def settings_cms(request: Request, publisher: str = Form("html"),
                          cms_user_email=cms_user_email.strip(),
                          cms_auto_submit=1 if cms_auto_submit == "1" else 0,
                          cms_password=(cms_password or None))
+    conn.close()
+    if _is_ajax(request):
+        return {"ok": True}
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/style")
+def settings_style(request: Request, article_style: str = Form("standard"),
+                   article_style_custom: str = Form("")):
+    """기사 문체 스타일 저장(프리셋 또는 custom 자유입력)."""
+    conn = db.connect()
+    db.set_tenant_config(conn, _tenant(request),
+                         article_style=article_style or "standard",
+                         article_style_custom=article_style_custom.strip())
     conn.close()
     if _is_ajax(request):
         return {"ok": True}

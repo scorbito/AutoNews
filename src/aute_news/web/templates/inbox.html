@@ -55,7 +55,7 @@
     <div class="msg-info">
       <a href="/messages/{{ m.id }}" class="msg-subj">📧 {{ m.subject or '(제목 없음)' }}</a>
       <div class="muted msg-meta">
-        {{ m.sender }} · {{ m.date }} ·
+        {% if m.account == 'manual' %}<span class="tag s-published">✏️ 직접 작성</span> {% endif %}{{ m.sender }} · {{ m.date }} ·
         {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
         {% if m.img_count %} · 📷 {{ m.img_count }}{% endif %}
         {% if m.pipeline == 'SKIP' %} · <span class="tag s-pending" title="기사 내용이 없어 보류됨 (배포계획·일정표 등)">보류</span>{% endif %}

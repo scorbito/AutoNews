@@ -96,7 +96,8 @@ def connect() -> _Conn:
 
 _CFG_COLS = ("imap_host", "imap_email", "imap_folders", "publisher", "ndsoft_base_url",
              "cms_user", "cms_user_name", "cms_user_email", "cms_section", "cms_auto_submit",
-             "pipeline_mode", "collect_enabled", "collect_times", "auto_publish_senders")
+             "pipeline_mode", "collect_enabled", "collect_times", "auto_publish_senders",
+             "article_style", "article_style_custom")
 
 
 def set_tenant_error(conn, tenant_id: int, message: str) -> None:

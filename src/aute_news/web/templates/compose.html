@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}기사 작성{% endblock %}
+{% block body %}
+<h2 style="margin:0 0 6px;">✏️ 기사 작성</h2>
+<p class="muted" style="margin:0 0 16px;">
+  자료(텍스트·문서·링크·이미지)를 넣으면 AI가 기사를 작성해 <b>기사함</b>에 넣습니다. 이후 검토·발행은 메일과 동일합니다.</p>
+{% if err %}<p class="block">⚠️ 제목·본문·파일·링크 중 최소 하나는 입력하세요.</p>{% endif %}
+
+<form method="post" action="/compose" enctype="multipart/form-data" class="card" style="max-width:640px;">
+  <label>제목 <span class="muted">(비우면 AI가 생성)</span></label>
+  <input type="text" name="title" placeholder="기사 제목(선택)">
+
+  <label>본문 · 자료 텍스트</label>
+  <textarea name="body" style="min-height:180px;" placeholder="보도자료 본문이나 기사 자료 텍스트를 붙여넣으세요."></textarea>
+
+  <label>문서 첨부 <span class="muted">(HWP·HWPX·PDF·DOC·DOCX — 여러 개 선택 가능)</span></label>
+  <input type="file" name="files" multiple accept=".hwp,.hwpx,.pdf,.doc,.docx">
+
+  <label>이미지 <span class="muted">(여러 개 선택 가능 — 기사에 자동 매칭)</span></label>
+  <input type="file" name="images" multiple accept="image/*">
+
+  <label>링크 <span class="muted">(웹 기사·다운로드 링크, 한 줄에 하나)</span></label>
+  <textarea name="links" style="min-height:70px;" placeholder="https://example.com/article&#10;https://example.com/file.hwp"></textarea>
+
+  <div class="row" style="margin-top:16px;">
+    <button type="submit" class="green">⚡ 기사 생성</button>
+    <a href="/inbox" class="btn secondary">취소</a>
+  </div>
+  <p class="muted" style="font-size:12px; margin-top:8px;">
+    제출하면 기사함에서 생성 진행상태를 볼 수 있어요 (건당 15~20초). 설정 ⑤의 <b>기사 스타일</b>도 함께 적용됩니다.</p>
+</form>
+{% endblock %}
