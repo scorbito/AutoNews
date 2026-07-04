@@ -78,29 +78,56 @@
     <p class="muted">먼저 <b>② 메일함</b>을 선택하세요. (자동 모드는 수집 대상이 있어야 동작)</p>
   {% else %}
   <form id="autoForm" action="/settings" onsubmit="return false;">
-    <label>자동 모드</label>
-    <select name="auto_mode">
-      <option value="0" {% if not auto_on %}selected{% endif %}>끄기 (수동: 내가 수집·검토·발행)</option>
-      <option value="1" {% if auto_on %}selected{% endif %}>켜기 (설정 시간에 자동 수집→기사화→발행)</option>
-    </select>
-    <label>수집 시간</label>
-    <input type="text" name="collect_times" value="{{ collect_times }}" placeholder="09:00,15:00 또는 30m">
-    <div class="muted" style="font-size:12px;">
-      · 특정시각: <code>09:00,15:00</code> (KST, 쉼표 구분)<br>
-      · 일정 간격: <code>30m</code>(30분마다) · <code>60m</code>(1시간마다)</div>
-
-    <label>자동 발행 발신자 <span class="muted">(비우면 자동 모드 시 전체 자동 발행)</span></label>
-    <input type="text" name="auto_publish_senders" value="{{ auto_publish_senders }}"
-           placeholder="press@paju.go.kr, paju.go.kr, 경기도의회">
-    <div class="muted" style="font-size:12px;">
-      여기 적은 발신자의 메일만 <b>자동 발행</b>되고, 그 외 메일은 기사화만 되어 <b>기사함에서 직접 발행</b>합니다.<br>
-      이메일 전체·도메인·기관명 일부 모두 가능 (쉼표 구분, 보내는 사람에 포함되면 일치).</div>
+    <input type="hidden" name="auto_mode" id="autoMode" value="{{ '1' if auto_on else '0' }}">
+    <input type="hidden" name="collect_times" id="collectTimes" value="{{ collect_times }}">
+    <input type="hidden" name="auto_publish_senders" id="autoSenders" value="{{ auto_publish_senders }}">
   </form>
-  <p class="muted" style="margin-top:12px;">
-    · <b>수동(끄기)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
-    · <b>자동(켜기)</b>: 설정한 시간에 ②에서 고른 메일함의 자료가 자동으로 기사화됩니다.
-    발행은 위 <b>자동 발행 발신자</b>가 비어 있으면 전체 자동, 채우면 그 발신자만 자동(나머지는 검토 후 수동).
-  </p>
+
+  <label>자동 모드</label>
+  <div class="optcards" id="modeCards">
+    <button type="button" class="optcard" data-mode="0"><b>끄기 · 수동</b><small>내가 직접 수집·검토·발행</small></button>
+    <button type="button" class="optcard" data-mode="1"><b>켜기 · 자동</b><small>설정 시간에 자동 수집→기사화→발행</small></button>
+  </div>
+
+  <div id="autoOnly">
+    <label style="margin-top:16px;">수집 시간</label>
+    <div class="pillrow" id="timeModeRow">
+      <button type="button" class="pillbtn" data-tmode="times">특정 시각</button>
+      <button type="button" class="pillbtn" data-tmode="interval">일정 간격</button>
+    </div>
+
+    <div id="timesBox" style="margin-top:10px;">
+      <div id="timesList"></div>
+      <button type="button" class="btn secondary sm" id="addTime">+ 시각 추가</button>
+      <div class="muted" style="font-size:12px; margin-top:6px;">원하는 시각을 여러 개 추가할 수 있어요 (KST 기준).</div>
+    </div>
+
+    <div id="intervalBox" style="margin-top:10px;">
+      <div class="pillrow" id="intervalChips">
+        <button type="button" class="pillbtn" data-min="5">5분</button>
+        <button type="button" class="pillbtn" data-min="10">10분</button>
+        <button type="button" class="pillbtn" data-min="15">15분</button>
+        <button type="button" class="pillbtn" data-min="30">30분</button>
+        <button type="button" class="pillbtn" data-min="60">1시간</button>
+        <button type="button" class="pillbtn" data-min="custom">기타</button>
+      </div>
+      <div id="customBox" class="row" style="display:none; margin-top:8px; gap:8px;">
+        <input type="number" id="customMin" min="1" step="1" placeholder="분" style="width:120px;">
+        <span class="muted">분마다</span>
+      </div>
+    </div>
+
+    <label style="margin-top:16px;">자동 발행 발신자 <span class="muted">(비우면 자동 시 전체 자동 발행)</span></label>
+    <div id="sendersList"></div>
+    <button type="button" class="btn secondary sm" id="addSender">+ 발신자 추가</button>
+    <div class="muted" style="font-size:12px; margin-top:6px;">
+      여기 추가한 발신자의 메일만 <b>자동 발행</b>되고, 그 외 메일은 기사화만 되어 <b>기사함에서 직접 발행</b>합니다.<br>
+      이메일 전체·도메인·기관명 일부 가능 (예: <code>press@paju.go.kr</code>, <code>paju.go.kr</code>, <code>경기도의회</code>).</div>
+  </div>
+
+  <p class="muted" style="margin-top:16px;">
+    · <b>끄기(수동)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
+    · <b>켜기(자동)</b>: 설정한 시간에 ②에서 고른 메일함 자료가 자동 기사화. 발행은 위 <b>자동 발행 발신자</b> 규칙에 따름.</p>
   {% endif %}
 </div>
 
@@ -110,18 +137,19 @@
     <p class="muted">먼저 <b>② 메일함</b>을 선택하세요.</p>
   {% else %}
   <form id="cmsForm" action="/settings/cms" onsubmit="return false;">
+    <input type="hidden" name="publisher" id="pubVal" value="{{ publisher or 'atpaju' }}">
     <label>발행 방식</label>
-    <select name="publisher">
-      <option value="html" {% if publisher=='html' %}selected{% endif %}>내보내기(HTML) — CMS 없이 미리보기만</option>
-      <option value="atpaju" {% if publisher=='atpaju' %}selected{% endif %}>ND소프트 CMS</option>
-      <option value="wordpress" {% if publisher=='wordpress' %}selected{% endif %}>워드프레스 (WordPress)</option>
-    </select>
-    <div class="muted" style="font-size:12px;">
+    <div class="pillrow" id="pubRow">
+      <button type="button" class="pillbtn" data-pub="atpaju">ND소프트 CMS</button>
+      <button type="button" class="pillbtn" data-pub="wordpress">워드프레스</button>
+      <button type="button" class="pillbtn" data-pub="html">내보내기 · 미리보기</button>
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:8px;">
       · <b>ND소프트</b> 기반 신문사면 ND소프트 CMS<br>
-      · <b>워드프레스</b> 사이트면 wordpress — 아이디는 WP 사용자명, 비밀번호는
-      <b>응용 프로그램 비밀번호</b>(WP 사용자 → 프로필 → 응용 프로그램 비밀번호에서 발급).</div>
+      · <b>워드프레스</b> 사이트면 워드프레스 — 아이디는 WP 사용자명, 비밀번호는 <b>응용 프로그램 비밀번호</b><br>
+      · <b>내보내기</b> — CMS 없이 게시판 미리보기만 (아래 설정 불필요)</div>
 
-    <div id="cms-fields" style="margin-top:10px;">
+    <div id="cms-fields" style="margin-top:14px;">
       <label>사이트 주소</label>
       <input type="text" name="ndsoft_base_url" value="{{ ndsoft_base_url }}" placeholder="https://www.atpaju.com">
       <label>사이트 아이디</label>
@@ -132,12 +160,11 @@
       <input type="text" name="cms_user_email" value="{{ cms_user_email or mail.imap_email or '' }}"
              placeholder="{{ mail.imap_email or 'reporter@paper.com' }}">
 
-      <label style="font-weight:normal; display:block; margin-top:12px;">
+      <label class="optbox">
         <input type="checkbox" name="cms_auto_submit" value="1" {% if cms_auto_submit %}checked{% endif %}>
-        저장 후 자동 승인요청 (작성중→승인요청; 끄면 작성중까지만)
+        <span><b>저장 후 자동 승인요청</b>
+          <small class="muted">켜면 발행 시 기사가 바로 <b>승인요청</b> 단계로 넘어가 CMS에서 수정 불가. 끄면 <b>작성중</b>까지만.</small></span>
       </label>
-      <div class="muted" style="font-size:12px;">
-        켜면 발행 시 기사가 바로 승인요청 단계로 넘어가 CMS에서 수정 불가가 됩니다.</div>
     </div>
   </form>
   <p class="muted" style="margin-top:10px; font-size:12px;">
@@ -224,13 +251,13 @@
           : '<p class="block">⚠️ ' + esc(j.error || '폴더를 불러오지 못했습니다') + '</p>';
         return;
       }
-      let h = '<div style="display:flex;flex-direction:column;gap:6px;margin:8px 0;">';
+      let h = '<div class="folders-grid">';
       j.folders.forEach(f => {
         const ck = j.selected.indexOf(f.name) >= 0 ? 'checked' : '';
         const lab = f.label !== f.name ? esc(f.label) + ' <span class="muted">(' + esc(f.name) + ')</span>' : esc(f.label);
-        h += '<label style="font-weight:normal;"><input type="checkbox" name="folders" value="' + esc(f.name) + '" ' + ck + '> ' + lab + '</label>';
+        h += '<label class="fitem" title="' + esc(f.label) + '"><input type="checkbox" name="folders" value="' + esc(f.name) + '" ' + ck + '><span class="ftxt">' + lab + '</span></label>';
       });
-      h += '</div><label style="display:block;margin-top:10px;color:#b35;"><input type="checkbox" name="collect_all" value="1" ' + (j.collect_all ? 'checked' : '') + '> 🧪 테스트: 기간 무시하고 폴더 전체 수집</label>';
+      h += '</div><label class="fitem" style="color:#b35; margin-top:10px;"><input type="checkbox" name="collect_all" value="1" ' + (j.collect_all ? 'checked' : '') + '><span>🧪 테스트: 기간 무시하고 폴더 전체 수집</span></label>';
       h += '<p class="muted" style="margin-top:8px;">새로 추가한 메일함은 오늘 0시(KST) 이후 도착분부터 수집합니다. (선택 즉시 저장)</p>';
       box.innerHTML = h;
       box.querySelectorAll('input').forEach(i => i.addEventListener('change', saveFolders));
@@ -241,6 +268,118 @@
       const f = document.getElementById(id);
       if (f) f.addEventListener('change', () => post(f.action, new FormData(f)));
     });
+
+    // ── ③ 자동 설정 위젯(버튼/드롭다운) → 히든 인풋 동기화 ──
+    const autoForm = document.getElementById('autoForm');
+    if (autoForm) {
+      const $ = id => document.getElementById(id);
+      const PRESETS = [5, 10, 15, 30, 60];
+      let modeVal = $('autoMode').value === '1' ? '1' : '0';
+      let timeMode = 'times', intervalMin = 0;
+      const ct0 = ($('collectTimes').value || '').trim();
+      const im = ct0.match(/^(\d+)\s*m$/i) || ct0.match(/^\*\/(\d+)$/);
+      if (im) { timeMode = 'interval'; intervalMin = parseInt(im[1], 10) || 0; }
+
+      function commit() {
+        $('autoMode').value = modeVal;
+        $('collectTimes').value = (timeMode === 'interval')
+          ? (intervalMin ? intervalMin + 'm' : '')
+          : [...$('timesList').querySelectorAll('.inrow')]
+              .map(r => r.querySelector('.th').value + ':' + r.querySelector('.tm').value).join(',');
+        $('autoSenders').value = [...$('sendersList').querySelectorAll('input')]
+          .map(i => i.value.trim()).filter(Boolean).join(', ');
+        $('collectTimes').dispatchEvent(new Event('change', { bubbles: true }));  // 자동 저장
+      }
+
+      // 자동 모드 카드
+      function renderMode() {
+        $('modeCards').querySelectorAll('.optcard').forEach(b => b.classList.toggle('on', b.dataset.mode === modeVal));
+        $('autoOnly').style.display = modeVal === '1' ? '' : 'none';
+      }
+      $('modeCards').querySelectorAll('.optcard').forEach(b =>
+        b.addEventListener('click', () => { modeVal = b.dataset.mode; renderMode(); commit(); }));
+
+      // 수집 시간 모드 (특정 시각 / 일정 간격)
+      function renderTimeMode() {
+        $('timeModeRow').querySelectorAll('.pillbtn').forEach(b => b.classList.toggle('on', b.dataset.tmode === timeMode));
+        $('timesBox').style.display = timeMode === 'times' ? '' : 'none';
+        $('intervalBox').style.display = timeMode === 'interval' ? '' : 'none';
+      }
+      $('timeModeRow').querySelectorAll('.pillbtn').forEach(b =>
+        b.addEventListener('click', () => { timeMode = b.dataset.tmode; renderTimeMode(); commit(); }));
+
+      // 특정 시각 행 — 시/분 드롭다운
+      function timeSelects(val) {
+        const [hh, mm] = (val || '09:00').split(':');
+        const hh2 = (hh || '09').padStart(2, '0'), mm2 = (mm || '00').padStart(2, '0');
+        const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+        const mins = new Set(['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55']);
+        mins.add(mm2);
+        const hSel = '<select class="th">' + hours.map(h =>
+          `<option value="${h}"${h === hh2 ? ' selected' : ''}>${h}시</option>`).join('') + '</select>';
+        const mSel = '<select class="tm">' + [...mins].sort().map(m =>
+          `<option value="${m}"${m === mm2 ? ' selected' : ''}>${m}분</option>`).join('') + '</select>';
+        return hSel + '<span class="tsep">:</span>' + mSel;
+      }
+      function addTimeRow(val) {
+        const row = document.createElement('div'); row.className = 'inrow';
+        row.innerHTML = timeSelects(val) + '<button type="button" class="del" title="삭제">✕</button>';
+        row.querySelectorAll('select').forEach(s => s.addEventListener('change', commit));
+        row.querySelector('.del').addEventListener('click', () => { row.remove(); commit(); });
+        $('timesList').appendChild(row);
+      }
+      $('addTime').addEventListener('click', () => { addTimeRow(''); commit(); });
+
+      // 일정 간격 칩
+      function renderInterval() {
+        const isCustom = intervalMin > 0 && !PRESETS.includes(intervalMin);
+        $('intervalChips').querySelectorAll('.pillbtn').forEach(b => {
+          const on = (b.dataset.min === 'custom') ? isCustom : (parseInt(b.dataset.min, 10) === intervalMin);
+          b.classList.toggle('on', on);
+        });
+        $('customBox').style.display = isCustom ? 'flex' : 'none';
+        if (isCustom) $('customMin').value = intervalMin;
+      }
+      $('intervalChips').querySelectorAll('.pillbtn').forEach(b =>
+        b.addEventListener('click', () => {
+          if (b.dataset.min === 'custom') { $('customBox').style.display = 'flex'; $('customMin').focus(); }
+          else { intervalMin = parseInt(b.dataset.min, 10); renderInterval(); commit(); }
+        }));
+      $('customMin').addEventListener('change', () => { intervalMin = parseInt($('customMin').value, 10) || 0; renderInterval(); commit(); });
+
+      // 발신자 행
+      function addSenderRow(val) {
+        const row = document.createElement('div'); row.className = 'inrow';
+        row.innerHTML = '<input type="text" placeholder="press@paju.go.kr 또는 paju.go.kr"><button type="button" class="del" title="삭제">✕</button>';
+        row.querySelector('input').value = val || '';
+        row.querySelector('input').addEventListener('change', commit);
+        row.querySelector('.del').addEventListener('click', () => { row.remove(); commit(); });
+        $('sendersList').appendChild(row);
+      }
+      $('addSender').addEventListener('click', () => addSenderRow(''));
+
+      // 초기값 채우기
+      if (timeMode === 'times') ct0.split(',').map(s => s.trim()).filter(Boolean).forEach(addTimeRow);
+      ($('autoSenders').value || '').split(',').map(s => s.trim()).filter(Boolean).forEach(addSenderRow);
+      renderMode(); renderTimeMode(); renderInterval();
+    }
+
+    // ── ④ 발행 방식 버튼 ──
+    const cmsForm = document.getElementById('cmsForm');
+    if (cmsForm) {
+      const pubVal = document.getElementById('pubVal');
+      const pubRow = document.getElementById('pubRow');
+      const cmsFields = document.getElementById('cms-fields');
+      function renderPub() {
+        pubRow.querySelectorAll('.pillbtn').forEach(b => b.classList.toggle('on', b.dataset.pub === pubVal.value));
+        cmsFields.style.display = (pubVal.value === 'html') ? 'none' : '';   // 내보내기는 설정 불필요
+      }
+      pubRow.querySelectorAll('.pillbtn').forEach(b => b.addEventListener('click', () => {
+        pubVal.value = b.dataset.pub; renderPub();
+        pubVal.dispatchEvent(new Event('change', { bubbles: true }));   // 자동 저장
+      }));
+      renderPub();
+    }
 
     // ── IMAP 설정 페이지 딥링크 (이메일 도메인 기준) ──
     const IMAP_URLS = {

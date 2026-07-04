@@ -197,6 +197,39 @@ form { margin: 0; }
 .tab.active .muted { color: #fff; }
 .tab-panel[hidden] { display: none; }
 
+/* 자동 설정 위젯 */
+.optcards { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.optcard {
+  flex: 1 1 200px; text-align: left; white-space: normal; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--gray-300); border-radius: var(--r-md);
+  padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px;
+}
+.optcard:hover { border-color: var(--gray-400); }
+.optcard b { font-size: 14.5px; color: var(--gray-900); font-weight: 700; }
+.optcard b::before { content: "○ "; color: var(--gray-400); font-weight: 400; }
+.optcard small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.optcard.on { border-color: var(--brand-600); background: var(--brand-600); }
+.optcard.on b { color: #fff; }
+.optcard.on b::before { content: "● "; color: #fff; }
+.optcard.on small { color: rgba(255,255,255,.9); }
+.pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.pillbtn {
+  background: var(--gray-100); color: var(--gray-600); border: 1px solid transparent;
+  border-radius: var(--r-pill); padding: 8px 15px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.pillbtn:hover { background: var(--gray-200); }
+.pillbtn.on { background: var(--brand-600); color: #fff; }
+.pillbtn.on::before { content: "✓ "; }
+.inrow { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.inrow input[type=text] { flex: 1; }
+.inrow select { flex: 0 0 auto; width: auto; min-width: 84px; padding: 9px 10px; }
+.inrow .tsep { color: var(--muted); font-weight: 700; margin: 0 -2px; }
+.inrow .del {
+  flex: none; width: 36px; height: 36px; padding: 0; background: transparent; color: var(--gray-400);
+  border: 1px solid var(--gray-300); border-radius: var(--r-sm); cursor: pointer; font-size: 13px;
+}
+.inrow .del:hover { background: var(--red-bg); color: var(--red-fg); border-color: #f3cfcf; }
+
 /* 자동 저장 토스트 */
 .save-toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px);
@@ -241,7 +274,26 @@ tbody tr:hover td { background: var(--brand-50); }
 .chip.active .n { opacity: .85; }
 
 /* ── 폼 ──────────────────────────────────────────────── */
-label { font-size: 13px; color: var(--gray-600); display: block; margin: 14px 0 5px; font-weight: 500; }
+label { font-size: 13px; color: var(--gray-800); display: block; margin: 14px 0 5px; font-weight: 600; }
+label .muted { font-weight: 500; }
+/* 강조 옵션 박스(체크박스형) — 눈에 잘 띄게 */
+.optbox {
+  display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 0; font-weight: 500;
+  border: 1px solid var(--gray-300); border-radius: var(--r-md); padding: 12px 14px; cursor: pointer;
+}
+.optbox:hover { border-color: var(--brand-500); background: var(--brand-50); }
+.optbox input[type=checkbox] { flex: none; width: 17px; height: 17px; margin-top: 1px; }
+.optbox b { color: var(--gray-900); font-size: 14px; }
+.optbox small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.55; }
+
+/* 수집 메일함 목록 — 여러 열로 한 화면에 */
+.folders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; margin: 8px 0; }
+.fitem {
+  display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; padding: 6px 2px;
+  font-size: 13.5px; font-weight: 500; color: var(--gray-800); cursor: pointer;
+}
+.fitem input { flex: none; }
+.ftxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input[type=text], input[type=email], input[type=password], textarea, select {
   width: 100%; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: var(--r-sm);
   font-family: inherit; font-size: 14px; background: var(--surface); color: var(--text);

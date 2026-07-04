@@ -111,7 +111,7 @@ def _static_ver() -> str:
         return "1"
 
 
-templates.env.globals["static_ver"] = _static_ver()
+templates.env.globals["static_ver"] = _static_ver   # 함수로 등록 → 매 렌더마다 최신 mtime
 
 STATUS_LABEL = {None: "미생성", "draft": "초안", "reviewed": "검토완료", "published": "발행됨"}
 ASTATUS = {None: "-", "split": "분할됨", "drafted": "초안",
@@ -757,7 +757,7 @@ def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
          "auto_publish_senders": cfg.get("auto_publish_senders") or "",
          "mail": mail, "selected": selected, "mailerr": mailerr,
          "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
-         "publisher": cfg.get("publisher") or "html",
+         "publisher": cfg.get("publisher") or "atpaju",   # 기본 ND소프트(표시용; 실발행은 자격증명 있어야)
          "ndsoft_base_url": cfg.get("ndsoft_base_url") or "",
          "cms_user": cfg.get("cms_user") or "",
          "cms_user_email": cfg.get("cms_user_email") or "",
