@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}내 설정{% endblock %}
 {% block body %}
+
+<style>
+  .mail-connect-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:16px; border:1px solid var(--border); border-radius:var(--r-md); background:var(--gray-50); margin-bottom:18px; }
+  .wizard-steps { display:grid; gap:14px; }
+  .wizard-step { padding:14px 0; border-bottom:1px solid var(--border); }
+  .wizard-step.is-last { border-bottom:0; }
+  .step-body label { margin-top:0; display:flex; align-items:center; gap:8px; }
+  .step-num { width:22px; height:22px; border-radius:999px; background:var(--brand-600); color:#fff; display:inline-grid; place-items:center; flex:0 0 22px; font-weight:800; font-size:12px; line-height:1; }
+  .provider-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .provider-chip { background:var(--surface); color:var(--gray-700); border:1px solid var(--border); padding:8px 12px; border-radius:999px; font-size:13px; font-weight:700; }
+  .provider-chip.on { background:var(--brand-600); color:#fff; border-color:var(--brand-600); }
+  .advanced-mail summary { cursor:pointer; color:var(--gray-600); font-weight:700; font-size:13px; }
+  .advanced-grid { margin-top:10px; padding:12px; border:1px dashed var(--gray-300); border-radius:var(--r-sm); background:var(--gray-50); }
+  @media (max-width: 720px) { .mail-connect-head { flex-direction:column; } }
+</style>
 <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
   <h2 style="margin:0;">내 설정 — 메일 · 자동 수집</h2>
   <a href="/logout" class="btn secondary sm">로그아웃</a>
@@ -32,43 +47,88 @@
   ✓ 기본 설정 완료! 기사함에서 <b>📥 메일 수집</b>으로 시작할 수 있어요. ③④는 필요할 때만 설정하세요.</p>
 
 <!-- ① 내 메일 계정 -->
-<div class="tab-panel card" data-panel="1" style="max-width:560px;" {% if active_step != '1' %}hidden{% endif %}>
-  {% if mailerr %}<p class="block">⚠️ {{ mailerr }}</p>{% endif %}
-  <form id="mailForm" action="/settings/mail" onsubmit="return false;">
-    <label>이메일</label>
-    <input type="text" name="imap_email" value="{{ mail.imap_email or '' }}" placeholder="id@naver.com">
-    <label>비밀번호 (앱 비밀번호 / IMAP 비번)</label>
-    <input type="password" name="imap_password" placeholder="{% if mail.imap_email %}변경 시에만 입력{% else %}앱 비밀번호{% endif %}">
-    <label>IMAP 호스트 <span class="muted">(naver·daum·gmail 등은 자동, 모르면 비워두기)</span></label>
-    <input type="text" name="imap_host" value="{{ mail.imap_host or '' }}" placeholder="imap.naver.com">
-  </form>
-  <p class="muted" style="margin-top:8px;">입력하면 자동 저장됩니다. <b>② 메일함</b> 탭을 누르면 그 계정의 메일함이 자동으로 나타납니다.</p>
+<div class="tab-panel card" data-panel="1" style="max-width:720px;" {% if active_step != '1' %}hidden{% endif %}>
+  {% if mailerr %}<p class="block">! {{ mailerr }}</p>{% endif %}
 
-  <div class="row" style="gap:8px; margin-top:10px;">
-    <a id="imapLink" href="#" target="_blank" rel="noopener" class="btn secondary sm" style="display:none;">📧 IMAP 설정 페이지 열기</a>
-    <button type="button" id="guideBtn" class="btn secondary sm">📖 설정 방법 보기</button>
+  <div class="mail-connect-head">
+    <div>
+      <div class="muted" style="font-size:12px; font-weight:700;">메일함 연결 상태</div>
+      {% if s1 %}
+        <h3 style="margin:6px 0 4px;">연결됨: {{ mail.imap_email }}</h3>
+        <p class="muted" style="margin:0;">보도자료 메일을 가져올 준비가 되어 있습니다. 다음 단계에서 수집할 메일함을 선택하세요.</p>
+      {% else %}
+        <h3 style="margin:6px 0 4px;">아직 메일함이 연결되지 않았습니다</h3>
+        <p class="muted" style="margin:0;">이메일 주소와 앱 비밀번호만 입력하면 보도자료 수집을 시작할 수 있습니다.</p>
+      {% endif %}
+    </div>
+    <span class="tag {% if s1 %}s-done{% else %}s-pending{% endif %}">{% if s1 %}연결됨{% else %}연결 필요{% endif %}</span>
   </div>
 
-  <details style="margin-top:10px;">
-    <summary style="cursor:pointer; color:#2b6;">🔑 앱 비밀번호(IMAP) 발급 방법 — 처음이면 꼭 읽어주세요</summary>
-    <div class="muted" style="font-size:13px; line-height:1.7; margin-top:8px;">
-      로그인 비밀번호가 아니라 <b>메일 앱 비밀번호</b>가 필요합니다. 그리고 메일에서 <b>IMAP 사용</b>을 켜야 해요.
-      <p style="margin:8px 0 2px;"><b>네이버</b></p>
-      ① 메일 → 환경설정 → <b>POP3/IMAP 설정</b> → <b>IMAP/SMTP 사용 ON</b><br>
-      ② (2단계인증 사용 시) 네이버 <b>내정보 → 보안 → 애플리케이션 비밀번호</b>에서 발급한 16자리를 비밀번호 칸에 입력<br>
-      <span style="font-size:12px;">설정: mail.naver.com → 환경설정 / 보안: nid.naver.com</span>
-      <p style="margin:8px 0 2px;"><b>다음/카카오</b></p>
-      ① 다음메일 → 환경설정 → <b>IMAP/POP3</b> → 사용<br>
-      ② (카카오 2단계인증 시) 카카오계정 보안에서 <b>앱 비밀번호</b> 발급해 입력
-      <p style="margin:8px 0 2px;"><b>Gmail</b></p>
-      ① Google 계정 <b>2단계 인증</b> 켜기 → <b>앱 비밀번호</b> 생성(myaccount.google.com/apppasswords)<br>
-      ② 생성된 16자리를 비밀번호 칸에 입력 (IMAP은 Gmail 설정에서 사용 ON)
-      <p style="margin:8px 0 0; color:#b35;">※ 어려우면 관리자에게 요청하세요 — 대신 설정해 드립니다.</p>
+  <form id="mailForm" action="/settings/mail" onsubmit="return false;">
+    <div class="wizard-steps">
+      <section class="wizard-step">
+        <div class="step-body">
+          <label><span class="step-num">1</span>보도자료를 받는 이메일 주소</label>
+          <input type="text" name="imap_email" value="{{ mail.imap_email or '' }}" placeholder="news@naver.com">
+          <div class="muted" id="mailProviderHint" style="font-size:12.5px; margin-top:6px;">이메일을 입력하면 메일 서비스를 자동으로 확인합니다.</div>
+        </div>
+      </section>
+
+      <section class="wizard-step">
+        <div class="step-body">
+          <label><span class="step-num">2</span>메일 서비스 확인</label>
+          <div class="provider-row" id="providerRow">
+            <button type="button" class="provider-chip" data-provider="naver" data-host="imap.naver.com">네이버</button>
+            <button type="button" class="provider-chip" data-provider="gmail" data-host="imap.gmail.com">Gmail</button>
+            <button type="button" class="provider-chip" data-provider="daum" data-host="imap.daum.net">다음/카카오</button>
+            <button type="button" class="provider-chip" data-provider="outlook" data-host="outlook.office365.com">Outlook</button>
+            <button type="button" class="provider-chip" data-provider="custom" data-host="">회사 메일</button>
+          </div>
+          <div class="muted" id="imapHostHint" style="font-size:12.5px; margin-top:7px;">네이버·Gmail·다음·Outlook은 서버 주소를 자동으로 넣습니다.</div>
+          <input type="hidden" name="imap_host" value="{{ mail.imap_host or '' }}">
+        </div>
+      </section>
+
+      <section class="wizard-step">
+        <div class="step-body">
+          <label><span class="step-num">3</span>앱 비밀번호</label>
+          <input type="password" name="imap_password" placeholder="{% if mail.imap_email %}변경할 때만 입력{% else %}앱 비밀번호 입력{% endif %}">
+          <p class="muted" style="font-size:12.5px; line-height:1.6; margin:6px 0 0;">
+            일반 로그인 비밀번호가 아니라 메일 수집용 앱 비밀번호가 필요할 수 있습니다.
+            입력한 값은 메일 수집에만 사용됩니다.
+          </p>
+          <div class="row" style="gap:8px; margin-top:10px;">
+            <a id="imapLink" href="#" target="_blank" rel="noopener" class="btn secondary sm" style="display:none;">IMAP 설정 페이지 열기</a>
+            <button type="button" id="guideBtn" class="btn secondary sm">설정 방법 보기</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wizard-step is-last">
+        <div class="step-body">
+          <label><span class="step-num">4</span>연결 확인</label>
+          <p class="muted" style="font-size:12.5px; line-height:1.6; margin:0 0 10px;">
+            연결 테스트를 누르면 설정을 저장한 뒤 메일함 목록을 불러옵니다.
+          </p>
+          <div class="row" style="gap:8px;">
+            <button type="button" id="testMailBtn" class="btn sm">연결 테스트</button>
+            <button type="button" id="goFoldersBtn" class="btn secondary sm" {% if not s1 %}disabled{% endif %}>메일함 선택으로 이동</button>
+          </div>
+        </div>
+      </section>
     </div>
-  </details>
+
+    <details class="advanced-mail" style="margin-top:14px;">
+      <summary>고급 IMAP 설정 직접 입력</summary>
+      <div class="advanced-grid">
+        <label>IMAP 서버</label>
+        <input type="text" id="advancedImapHost" value="{{ mail.imap_host or '' }}" placeholder="imap.naver.com">
+        <p class="muted" style="font-size:12.5px; margin:4px 0 0;">회사 메일이거나 자동 감지가 맞지 않을 때만 입력하세요.</p>
+      </div>
+    </details>
+  </form>
 </div>
 
-<!-- ② 수집할 메일함 선택 (폴더는 JS가 불러와 채움) -->
 <div class="tab-panel card" data-panel="2" style="max-width:560px;" {% if active_step != '2' %}hidden{% endif %}>
   <div id="foldersBox"><p class="muted">메일함을 불러오는 중…</p></div>
 </div>
@@ -264,6 +324,49 @@
       return ok;
     }
     if (mailForm) mailForm.addEventListener('change', saveMail);
+    const providerChips = document.querySelectorAll('.provider-chip');
+    const providerHint = document.getElementById('mailProviderHint');
+    const hostHint = document.getElementById('imapHostHint');
+    const advHost = document.getElementById('advancedImapHost');
+    const hiddenHost = mailForm ? mailForm.querySelector('[name=imap_host]') : null;
+    const testMailBtn = document.getElementById('testMailBtn');
+    const goFoldersBtn = document.getElementById('goFoldersBtn');
+    const providerByDomain = {
+      'naver.com': ['naver', 'imap.naver.com', '네이버 메일로 확인했습니다.'],
+      'gmail.com': ['gmail', 'imap.gmail.com', 'Gmail로 확인했습니다.'],
+      'daum.net': ['daum', 'imap.daum.net', '다음/카카오 메일로 확인했습니다.'],
+      'hanmail.net': ['daum', 'imap.daum.net', '다음/카카오 메일로 확인했습니다.'],
+      'outlook.com': ['outlook', 'outlook.office365.com', 'Outlook 메일로 확인했습니다.'],
+      'hotmail.com': ['outlook', 'outlook.office365.com', 'Outlook 메일로 확인했습니다.']
+    };
+    function setProvider(provider, host, message, manual) {
+      providerChips.forEach(b => b.classList.toggle('on', b.dataset.provider === provider));
+      if (hiddenHost && (host || manual)) hiddenHost.value = host || '';
+      if (advHost && (host || manual)) advHost.value = host || '';
+      if (providerHint && message) providerHint.textContent = message;
+      if (hostHint) hostHint.textContent = host ? ('IMAP 서버: ' + host) : '회사 메일은 고급 IMAP 설정에서 서버 주소를 입력하세요.';
+    }
+    function detectProvider() {
+      if (!mailForm) return;
+      const em = (mailForm.querySelector('[name=imap_email]').value || '').trim().toLowerCase();
+      const domain = em.split('@')[1] || '';
+      const found = providerByDomain[domain];
+      if (found) setProvider(found[0], found[1], found[2], true);
+      else if (domain) setProvider('custom', hiddenHost ? hiddenHost.value : '', '회사/기관 메일로 보입니다. IMAP 서버 주소가 필요할 수 있습니다.', false);
+      else setProvider('', hiddenHost ? hiddenHost.value : '', '이메일을 입력하면 메일 서비스를 자동으로 확인합니다.', false);
+    }
+    providerChips.forEach(b => b.addEventListener('click', () => {
+      setProvider(b.dataset.provider, b.dataset.host || '', b.textContent.trim() + ' 메일로 설정합니다.', true);
+      saveMail();
+    }));
+    if (advHost && hiddenHost) advHost.addEventListener('input', () => { hiddenHost.value = advHost.value; });
+    if (mailForm) mailForm.addEventListener('input', detectProvider);
+    if (testMailBtn) testMailBtn.addEventListener('click', async () => {
+      const ok = await saveMail();
+      if (ok) { tabByN('2').classList.remove('lock'); if (goFoldersBtn) goFoldersBtn.disabled = false; show('2'); }
+    });
+    if (goFoldersBtn) goFoldersBtn.addEventListener('click', () => show('2'));
+    detectProvider();
 
     // ── ② 메일함: 탭 열 때 지연 로딩, 선택 즉시 저장 ──
     function saveFolders() {
@@ -463,10 +566,12 @@
 
     // ── IMAP 설정 페이지 딥링크 (이메일 도메인 기준) ──
     const IMAP_URLS = {
-      'naver.com': 'https://mail.naver.com/',
-      'daum.net': 'https://mail.daum.net/',
-      'hanmail.net': 'https://mail.daum.net/',
+      'naver.com': 'https://mail.naver.com/v2/settings/smtp/imap',
+      'daum.net': 'https://mail.daum.net/settings/imap',
+      'hanmail.net': 'https://mail.daum.net/settings/imap',
       'gmail.com': 'https://mail.google.com/mail/u/0/#settings/fwdandpop',
+      'googlemail.com': 'https://mail.google.com/mail/u/0/#settings/fwdandpop',
+      'kakao.com': 'https://mail.kakao.com/settings',
       'nate.com': 'https://mail.nate.com/',
       'outlook.com': 'https://outlook.live.com/mail/0/options/mail/accounts',
       'hotmail.com': 'https://outlook.live.com/mail/0/options/mail/accounts'
