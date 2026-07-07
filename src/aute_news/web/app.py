@@ -121,7 +121,7 @@ AFILTERS = [("all", "전체"), ("drafted", "초안"), ("reviewed", "검토완료
 FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
            ("reviewed", "검토완료"), ("published", "발행됨")]
 
-_PUBLIC_PATHS = ("/login", "/logout", "/signup", "/forgot", "/reset-password")
+_PUBLIC_PATHS = ("/landing", "/login", "/logout", "/signup", "/forgot", "/reset-password")
 
 
 @app.middleware("http")
@@ -138,6 +138,14 @@ async def require_auth(request: Request, call_next):
 app.add_middleware(SessionMiddleware,
                    secret_key=os.getenv("SESSION_SECRET", "dev-insecure-change-me"),
                    max_age=60 * 60 * 12)
+
+
+@app.get("/landing", response_class=HTMLResponse)
+def landing(request: Request):
+    response = templates.TemplateResponse(request, "landing.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def _tenant(request: Request) -> int:
