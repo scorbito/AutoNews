@@ -806,6 +806,7 @@ def settings_form(request: Request, mailerr: str = "", welcome: str = ""):
         {"auto_on": auto_on, "collect_times": cfg.get("collect_times") or "",
          "auto_publish_senders": cfg.get("auto_publish_senders") or "",
          "mail": mail, "selected": selected, "mailerr": mailerr,
+         "last_error": cfg.get("last_error") or "",
          "cms_auto_submit": bool(cfg.get("cms_auto_submit")),
          "publisher": cfg.get("publisher") or "atpaju",   # 기본 ND소프트(표시용; 실발행은 자격증명 있어야)
          "ndsoft_base_url": cfg.get("ndsoft_base_url") or "",
@@ -830,7 +831,13 @@ def settings_folders_json(request: Request):
     selected = [f.strip() for f in (mail.get("imap_folders") or "").split(",") if f.strip()]
     try:
         folders = list_imap_folders(mail["imap_host"], mail["imap_email"], mail["imap_password"])
+        conn = db.connect()
+        db.clear_tenant_error(conn, _tenant(request))
+        conn.close()
     except Exception as e:  # noqa: BLE001
+        conn = db.connect()
+        db.set_tenant_error(conn, _tenant(request), "메일 로그인 실패 — 내 설정 ①에서 앱 비밀번호(IMAP)를 확인/갱신하세요.")
+        conn.close()
         return {"ok": False, "error": f"폴더 목록을 못 받았습니다 ({type(e).__name__}) — 계정/비번 확인"}
     return {"ok": True, "collect_all": bool(mail.get("collect_all")), "selected": selected,
             "folders": [{"name": f["name"], "label": f["label"]} for f in folders]}
