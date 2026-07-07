@@ -121,7 +121,7 @@ AFILTERS = [("all", "전체"), ("drafted", "초안"), ("reviewed", "검토완료
 FILTERS = [("all", "전체"), ("none", "미생성"), ("draft", "초안"),
            ("reviewed", "검토완료"), ("published", "발행됨")]
 
-_PUBLIC_PATHS = ("/landing", "/login", "/logout", "/signup", "/forgot", "/reset-password")
+_PUBLIC_PATHS = ("/", "/landing", "/login", "/logout", "/signup", "/forgot", "/reset-password")
 
 
 @app.middleware("http")
@@ -140,12 +140,16 @@ app.add_middleware(SessionMiddleware,
                    max_age=60 * 60 * 12)
 
 
-@app.get("/landing", response_class=HTMLResponse)
-def landing(request: Request):
+def _landing_response(request: Request):
     response = templates.TemplateResponse(request, "landing.html")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@app.get("/landing", response_class=HTMLResponse)
+def landing(request: Request):
+    return _landing_response(request)
 
 
 def _tenant(request: Request) -> int:
@@ -443,8 +447,7 @@ def _group_by_email(arts: list) -> list:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    # 수집함+기사 통합 → 기사함(/inbox) 하나로
-    return RedirectResponse("/inbox", status_code=303)
+    return _landing_response(request)
 
 
 @app.post("/articles/bulk")

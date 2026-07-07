@@ -20,6 +20,8 @@
     .brand { display:flex; align-items:center; gap:10px; font-weight:900; letter-spacing:-.02em; }
     .logo { width:34px; height:34px; display:grid; place-items:center; border-radius:8px; background:#3657e8; color:#fff; font-weight:900; }
     .links { display:flex; align-items:center; gap:22px; color:#475467; font-weight:700; font-size:14px; }
+    .nav-actions { display:flex; align-items:center; gap:10px; }
+    .login-small { padding:10px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; color:#334155; font-weight:800; }
     .cta-small { padding:10px 14px; border-radius:8px; background:var(--blue); color:#fff; font-weight:800; }
     .hero { min-height:92vh; padding:104px 22px 54px; position:relative; color:#fff; display:flex; align-items:end; background-image:radial-gradient(circle at 72% 42%, rgba(96,165,250,.20), transparent 28%), linear-gradient(90deg, rgba(15,23,42,.97), rgba(15,23,42,.86) 43%, rgba(15,23,42,.28)), url('/static/landing-hero-flow.png'); background-size:cover; background-position:center right; }
     .hero-inner { width:100%; max-width:1180px; margin:0 auto; padding-bottom:36px; }
@@ -121,11 +123,14 @@
 <body data-version="landing-20260708-2">
   <header class="top">
     <nav class="nav" aria-label="주요 메뉴">
-      <a class="brand" href="/landing"><span class="logo">N</span><span>뉴스플로우 AI</span></a>
+      <a class="brand" href="/"><span class="logo">N</span><span>뉴스플로우 AI</span></a>
       <div class="links">
         <a href="#problem">문제</a><a href="#flow">자동화 흐름</a><a href="#features">핵심 기능</a><a href="#impact">효과</a><a href="#start">도입</a>
       </div>
-      <a class="cta-small" href="/signup">무료 체험 시작</a>
+      <div class="nav-actions">
+        <a class="login-small" href="/login">로그인</a>
+        <a class="cta-small" href="/signup">무료 체험 시작</a>
+      </div>
     </nav>
   </header>
 
