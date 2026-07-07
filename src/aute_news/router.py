@@ -7,9 +7,13 @@
 """
 from __future__ import annotations
 
+import os
 import re
 
 from .llm import get_llm
+
+# 패턴 판단은 품질 우선 — 라우터만 Flash(나머지 단계는 LLM_MODEL=flash-lite).
+_ROUTER_MODEL = os.getenv("ROUTER_MODEL", "gemini-2.5-flash")
 
 _SYSTEM = (
     "너는 언론사 보도자료 메일을 받아 '어떻게 처리할지' 계획을 세우는 라우터다. "
@@ -31,6 +35,20 @@ _SYSTEM = (
     "로고·홈·구독관리·수신거부·추적 링크는 article/download 둘 다에서 제외. "
     "첨부파일 자체(hwp/이미지 등)는 코드가 따로 처리하니 링크 목록에 넣지 마라. "
     "링크는 반드시 입력에 주어진 URL 중에서만 고른다.\n"
+    "\n## 판단 예시 (지금까지 관측된 패턴 — 참고만 하고 실제 입력으로 판단):\n"
+    "예1) 제목 '다음주 주간행사 및 보도자료 배포계획', 첨부 문서 본문이 날짜·제목·담당부서 표 나열\n"
+    '   → {"skip":true,"reason":"앞으로 배포할 예정 목록(배포계획)이라 실제 기사 내용 없음","body_is_article":false}\n'
+    "예2) 제목 '[보도자료 2건](○○청) 송부', 본문에 보도자료 제목들 + 파일 다운로드 링크\n"
+    '   → {"skip":false,"reason":"실제 보도자료를 다운로드 링크로 전달 — 처리 대상","body_is_article":false,"download_links":["(주어진 다운로드 URL들)"]}\n'
+    "예3) 제목 '○○시, △△ 행사 개최', hwp 첨부 본문에 사건·행사를 문장으로 설명\n"
+    '   → {"skip":false,"reason":"실제 보도자료 본문(첨부)","body_is_article":false}\n'
+    "예4) 제목 '○○ 정책 발표', 이메일 본문 자체가 기사로 쓸 보도자료 본문\n"
+    '   → {"skip":false,"reason":"본문이 보도자료","body_is_article":true}\n'
+    "예5) 제목 '○○ 뉴스레터/이벤트 안내', 본문이 홍보·구독 안내\n"
+    '   → {"skip":true,"reason":"광고/뉴스레터"}\n'
+    "예6) 제목 '[경기도의회] 의회 주간행사계획', 첨부가 주간 일정표\n"
+    '   → {"skip":true,"reason":"주간 일정표(예정)라 기사 내용 없음","body_is_article":false}\n'
+    "\n"
     '반드시 JSON만: {"skip":bool,"reason":"...","body_is_article":bool,'
     '"article_links":["..."],"download_links":["..."]}'
 )
@@ -50,7 +68,7 @@ def plan_email(subject: str, sender: str, body: str,
             f"## 첨부 문서 본문(추출)\n{doc}\n\n"
             f"## 이메일 본문(일부)\n{text}\n\n## 본문 내 링크 후보\n{link_lines}")
     try:
-        r = get_llm().complete_json(_SYSTEM, user, temperature=0.0)
+        r = get_llm(_ROUTER_MODEL).complete_json(_SYSTEM, user, temperature=0.0)
     except Exception:  # noqa: BLE001 (실패 → 호출부가 휴리스틱 폴백)
         return None
 
