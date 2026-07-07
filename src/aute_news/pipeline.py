@@ -146,6 +146,10 @@ def _generate_download_articles(conn, message_pk: int, urls: list[str], mode: st
                 files.append((ef.name, ef.data, url))
         else:
             files.append((fn, data, url))
+    # 정부 배포는 같은 보도자료를 hwpx+hwp 둘 다 보냄 → hwpx 우선, 같은 이름 hwp 중복 제거
+    hwpx_stems = {f[0].rsplit(".", 1)[0] for f in files if f[0].lower().endswith(".hwpx")}
+    files = [f for f in files
+             if not (f[0].lower().endswith(".hwp") and f[0].rsplit(".", 1)[0] in hwpx_stems)]
     groups, cur = [], None
     for fn, data, url in files:
         fmt = detect_format(fn)
@@ -231,6 +235,12 @@ def process_message(conn, message_pk: int, mode: str | None = None,
 
     link_urls = plan["article_links"]
     download_urls = plan["download_links"]
+    # 다운로드 링크는 코드 휴리스틱으로 병합(LLM이 긴 URL을 자주 누락 — 정부/메일러 첨부 다운로드 등).
+    for u in links.extract_download_links(body):
+        if u not in download_urls:
+            download_urls.append(u)
+    dset = set(download_urls)
+    link_urls = [u for u in link_urls if u not in dset]   # 다운로드로 잡힌 건 기사링크에서 제외
 
     # 재처리 시 이전 합성 첨부(weblink/body) 정리 → 링크 기사 중복 누적 방지
     db.clear_synthetic_attachments(conn, message_pk, tenant_id=tenant_id)
