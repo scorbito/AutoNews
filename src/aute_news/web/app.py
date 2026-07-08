@@ -719,12 +719,16 @@ async def compose_post(request: Request, background: BackgroundTasks):
     if not (body_full or files or images_up):
         return RedirectResponse("/compose?err=1", status_code=303)
 
+    # 제목 미입력 시 본문 첫 줄로 대체(배지 '직접 작성'과 중복 안 되게), 본문도 없으면 '(제목 없음)'
+    if not title:
+        first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+        title = (first[:40] + "…") if len(first) > 40 else first
     now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=9)))
     conn = db.connect()
     pk = db.insert_message(
         conn, tenant_id=t, account="manual", folder="manual", uid=0,
         message_id=f"manual:{t}:{uuid.uuid4().hex[:12]}",
-        subject=title or "(직접 작성)", sender=request.session.get("email") or "직접 작성",
+        subject=title or "(제목 없음)", sender=request.session.get("email") or "직접 작성",
         date=now.strftime("%a, %d %b %Y %H:%M:%S +0900"), body_text=body_full)
     stats = {"attachments": 0, "extracted": 0, "manual": 0}
     for idx, up in enumerate(files + images_up, start=1):
