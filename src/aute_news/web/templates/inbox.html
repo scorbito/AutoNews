@@ -100,9 +100,9 @@
     <table class="msg-arts">
       <tbody>
       {% for a in m.articles %}
-        <tr>
+        <tr id="art-{{ a.id }}">
           <td class="muted" style="width:30px;">{{ a.sequence_number }}</td>
-          <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a>
+          <td><a href="/a/{{ a.id }}?origin={{ 'archive' if archived else 'inbox' }}">{{ a.headline or a.title or '(미생성)' }}</a>
             {% if a.photo_count %}<span class="muted" style="font-size:12px;">📷{{ a.photo_count }}</span>{% endif %}</td>
           <td class="muted" style="width:96px;">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
           <td style="width:84px;"><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
@@ -142,13 +142,21 @@
 {% endif %}
 
 <script>
-  // 액션(생성/발행/취소) 후 새로고침돼도 스크롤 위치 유지 — 맨 위로 안 튀게
+  // 목록을 떠날 때 스크롤을 저장 → 돌아오면 그 위치로 복원 (기사함/보관함 경로별로 분리).
+  // 기사 편집·액션 후 돌아와도 맨 위로 안 튀고 원래 보던 위치 유지.
   history.scrollRestoration = 'manual';
   (function () {
-    const KEY = 'inboxScrollY';
-    const y = sessionStorage.getItem(KEY);
-    if (y !== null) { sessionStorage.removeItem(KEY); window.scrollTo(0, parseInt(y) || 0); }
-    window.addEventListener('beforeunload', () => sessionStorage.setItem(KEY, window.scrollY));
+    const KEY = 'scrollY:' + location.pathname;
+    function restore() {
+      const y = sessionStorage.getItem(KEY);
+      if (y !== null) window.scrollTo(0, parseInt(y, 10) || 0);
+    }
+    restore();
+    // 폰트·레이아웃이 잡힌 다음 프레임에 한 번 더(초기 복원 위치 오차 보정)
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+    function save() { sessionStorage.setItem(KEY, String(window.scrollY)); }
+    window.addEventListener('pagehide', save);
+    window.addEventListener('beforeunload', save);
   })();
 
   // 기사 생성/재생성 클릭 즉시 버튼을 '생성중'으로(리다이렉트 전 잠깐) + 더블클릭 방지

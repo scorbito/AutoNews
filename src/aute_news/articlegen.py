@@ -137,14 +137,23 @@ def generate_for_article(conn, article_id: int, tenant_id: int = db.DEFAULT_TENA
 
     body_html = promo_postprocess(res.get("article_body_html", ""),
                                   art["body"] or "", res.get("article_type", ""))
+    orig_title = res.get("article_title", art["title"] or "")
+    orig_subtitle = res.get("article_subtitle", "")
+    # 원본(기사체) 제목·부제를 SEO 목록 맨 앞에 함께 저장 → 언제든 되돌리기 가능
+    seo_titles = ([{"label": "원본", "text": orig_title}] if orig_title else []) \
+        + res.get("seo_titles", [])
+    seo_subtitles = ([{"label": "원본", "text": orig_subtitle}] if orig_subtitle else []) \
+        + res.get("seo_subtitles", [])
     db.update_article_generated(
         conn, article_id,
-        headline=res.get("article_title", art["title"] or ""),
-        subtitle=res.get("article_subtitle", ""),
+        headline=orig_title,
+        subtitle=orig_subtitle,
         content_html=body_html,
         category_code=normalize_category(res.get("category_code")),
         article_type=res.get("article_type", ""),
         source_info=json.dumps(res.get("source_info", {}), ensure_ascii=False),
         editor_notes=json.dumps(res.get("editor_notes", {}), ensure_ascii=False),
+        seo_suggestions=json.dumps(
+            {"titles": seo_titles, "subtitles": seo_subtitles}, ensure_ascii=False),
         tenant_id=tenant_id)
     return res

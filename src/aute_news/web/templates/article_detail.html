@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ a.headline or '기사' }}{% endblock %}
 {% block body %}
-<p><a href="/inbox">← 기사함</a>
+{% set back_path = '/archive' if origin == 'archive' else '/inbox' %}
+<p><a href="{{ back_path }}">← {{ '보관함' if origin == 'archive' else '기사함' }}</a>
    · 상태 <span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span>
    {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}
    {% if a.status == 'published' %}· <a href="/board/{{ a.id }}" target="_blank">🗞 게시판에서 보기</a>{% endif %}</p>
@@ -11,10 +12,42 @@
   <div class="card">
     <h3>기사 편집</h3>
     <form id="editform" method="post" action="/a/{{ a.id }}/save">
+      <input type="hidden" name="origin" value="{{ origin }}">
       <label>제목</label>
-      <input type="text" name="headline" value="{{ a.headline or '' }}">
+      <input type="text" id="f_headline" name="headline" value="{{ a.headline or '' }}">
       <label>부제</label>
-      <input type="text" name="subtitle" value="{{ a.subtitle or '' }}">
+      <input type="text" id="f_subtitle" name="subtitle" value="{{ a.subtitle or '' }}">
+      {% if seo and (seo.titles or seo.subtitles) %}
+      <button type="button" class="gray sm" style="margin:8px 0 0;"
+              onclick="var p=document.getElementById('seoPanel'); p.style.display = (p.style.display==='none'||!p.style.display)?'block':'none';">
+        🔍 SEO·AI검색 추천 제목·부제</button>
+      <div id="seoPanel" style="display:none; margin-top:8px; border:1px solid var(--border);
+           border-radius:8px; padding:10px 12px; background:var(--gray-50);">
+        {% if seo.titles %}
+        <div class="muted" style="font-size:12px; font-weight:700; margin-bottom:6px;">추천 제목</div>
+        {% for s in seo.titles %}
+        <div class="seo-item" style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+          <span class="tag {{ 's-published' if s.label == '원본' else 's-draft' }}" style="flex:0 0 auto;">{{ s.label }}</span>
+          <span class="seo-text" style="flex:1; font-size:13px; line-height:1.4;">{{ s.text }}</span>
+          <button type="button" class="sm" style="flex:0 0 auto;"
+                  onclick="applySeo('f_headline', this, '제목 적용')">제목 적용</button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% if seo.subtitles %}
+        <div class="muted" style="font-size:12px; font-weight:700; margin:12px 0 6px;">추천 부제</div>
+        {% for s in seo.subtitles %}
+        <div class="seo-item" style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+          <span class="tag {{ 's-published' if s.label == '원본' else 's-draft' }}" style="flex:0 0 auto;">{{ s.label }}</span>
+          <span class="seo-text" style="flex:1; font-size:13px; line-height:1.4;">{{ s.text }}</span>
+          <button type="button" class="sm" style="flex:0 0 auto;"
+                  onclick="applySeo('f_subtitle', this, '부제 적용')">부제 적용</button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        <div class="muted" style="font-size:11px; margin-top:8px;">적용 후 <b>💾 저장</b>을 눌러야 반영됩니다.</div>
+      </div>
+      {% endif %}
       <label>카테고리</label>
       <select name="category_code">
         {% for code, name in cats.items() %}
@@ -26,8 +59,8 @@
     </form>
     <div class="row" style="margin-top:12px;">
       <button type="submit" form="editform">💾 저장</button>
-      <form method="post" action="/a/{{ a.id }}/review"><button class="gray" type="submit">✓ 검토완료</button></form>
-      <form method="post" action="/a/{{ a.id }}/publish" data-confirm="이 기사를 발행합니다. 계속할까요?"><button class="publish" type="submit">🚀 발행</button></form>
+      <form method="post" action="/a/{{ a.id }}/review"><input type="hidden" name="origin" value="{{ origin }}"><button class="gray" type="submit">✓ 검토완료</button></form>
+      <form method="post" action="/a/{{ a.id }}/publish" data-confirm="이 기사를 발행합니다. 계속할까요?"><input type="hidden" name="origin" value="{{ origin }}"><button class="publish" type="submit">🚀 발행</button></form>
     </div>
     <p class="muted">※ 로컬·CMS 미설정이면 발행 게시판(미리보기), 운영서버+CMS 설정이면 실제 발행됩니다.</p>
   </div>
@@ -62,6 +95,7 @@
       <div style="text-align:center; max-width:120px; position:relative;">
         <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
         <form method="post" action="/a/{{ a.id }}/image/{{ im.id }}/remove" style="position:absolute; top:2px; right:2px;">
+          <input type="hidden" name="origin" value="{{ origin }}">
           <button type="submit" title="이 사진 제거"
                   style="background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; line-height:1;">✕</button>
         </form>
@@ -72,4 +106,14 @@
     {% endif %}
   </div>
 </div>
+<script>
+function applySeo(targetId, btn, defaultLabel) {
+  var text = btn.parentNode.querySelector('.seo-text').textContent.trim();
+  var input = document.getElementById(targetId);
+  input.value = text;
+  input.focus();
+  btn.textContent = '적용됨 ✓';
+  setTimeout(function () { btn.textContent = defaultLabel; }, 1200);
+}
+</script>
 {% endblock %}

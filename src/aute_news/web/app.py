@@ -1030,7 +1030,7 @@ def billing_bank_transfer(request: Request, depositor: str = Form(...),
         status_code=303)
 
 @app.get("/a/{article_id}", response_class=HTMLResponse)
-def article_detail(request: Request, article_id: int):
+def article_detail(request: Request, article_id: int, origin: str = "inbox"):
     t = _tenant(request)
     conn = db.connect()
     art = db.get_article(conn, article_id, tenant_id=t)
@@ -1039,47 +1039,52 @@ def article_detail(request: Request, article_id: int):
     return templates.TemplateResponse(
         request, "article_detail.html",
         {"a": art, "images": imgs, "astatus": ASTATUS, "cats": CATEGORY_CODES,
+         "origin": "archive" if origin == "archive" else "inbox",
          "source_info": _jload(art["source_info"]) if art else {},
-         "editor_notes": _jload(art["editor_notes"]) if art else {}})
+         "editor_notes": _jload(art["editor_notes"]) if art else {},
+         "seo": _jload(art["seo_suggestions"]) if art and art["seo_suggestions"] else {}})
 
 
 @app.post("/a/{article_id}/save")
 def article_save(request: Request, article_id: int, headline: str = Form(...),
                  subtitle: str = Form(""), content_html: str = Form(...),
-                 category_code: str = Form("S1N10")):
+                 category_code: str = Form("S1N10"), origin: str = Form("inbox")):
     conn = db.connect()
     db.update_article_edit(conn, article_id, headline=headline, subtitle=subtitle,
                            content_html=content_html, category_code=category_code,
                            tenant_id=_tenant(request))
     conn.close()
-    return RedirectResponse(f"/a/{article_id}", status_code=303)
+    return RedirectResponse(f"/a/{article_id}?origin={origin}", status_code=303)
 
 
 @app.post("/a/{article_id}/image/{image_id}/remove")
-def article_image_remove(request: Request, article_id: int, image_id: int):
+def article_image_remove(request: Request, article_id: int, image_id: int,
+                         origin: str = Form("inbox")):
     """기사에서 사진 1장 제거(로고·오매칭 등). article_id 연결만 해제."""
     conn = db.connect()
     db.assign_image_article(conn, image_id, None, tenant_id=_tenant(request))
     conn.close()
-    return RedirectResponse(f"/a/{article_id}", status_code=303)
+    return RedirectResponse(f"/a/{article_id}?origin={origin}", status_code=303)
 
 
 @app.post("/a/{article_id}/review")
-def article_review(request: Request, article_id: int):
+def article_review(request: Request, article_id: int, origin: str = Form("inbox")):
     conn = db.connect()
     db.set_article_status(conn, article_id, "reviewed", tenant_id=_tenant(request))
     conn.close()
-    return RedirectResponse(f"/a/{article_id}", status_code=303)
+    return RedirectResponse(f"/a/{article_id}?origin={origin}", status_code=303)
 
 
 @app.post("/a/{article_id}/publish")
-def article_publish(request: Request, article_id: int, background: BackgroundTasks):
-    """기사 1건 발행 — 큐에 적재. 진행은 기사함에서 표시."""
+def article_publish(request: Request, article_id: int, background: BackgroundTasks,
+                    origin: str = Form("inbox")):
+    """기사 1건 발행 — 큐에 적재. 발행 후 원래 목록의 그 기사 위치로."""
     conn = db.connect()
     target = _msg_ids_for_articles(conn, _tenant(request), [article_id])
     conn.close()
     _enqueue(request, background, "publish", 1, payload=str(article_id), target=target)
-    return RedirectResponse("/inbox", status_code=303)
+    back = "/archive" if origin == "archive" else "/inbox"
+    return RedirectResponse(back, status_code=303)
 
 
 # ── 발행 미리보기 게시판 (테스트/데모용 신문 페이지) ──

@@ -595,13 +595,14 @@ def get_article(conn, article_id: int, tenant_id: int = DEFAULT_TENANT):
 def update_article_generated(conn, article_id: int, *, headline: str, subtitle: str,
                              content_html: str, category_code: str, article_type: str,
                              source_info: str, editor_notes: str,
+                             seo_suggestions: str | None = None,
                              tenant_id: int = DEFAULT_TENANT) -> None:
     conn.execute(
         """UPDATE articles SET headline=?, subtitle=?, content_html=?, category_code=?,
-               article_type=?, source_info=?, editor_notes=?, status='drafted'
+               article_type=?, source_info=?, editor_notes=?, seo_suggestions=?, status='drafted'
            WHERE id=? AND tenant_id=?""",
         (headline, subtitle, content_html, category_code, article_type,
-         source_info, editor_notes, article_id, tenant_id))
+         source_info, editor_notes, seo_suggestions, article_id, tenant_id))
 
 
 def update_article_edit(conn, article_id: int, *, headline: str, subtitle: str,

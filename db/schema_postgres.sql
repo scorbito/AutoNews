@@ -136,6 +136,7 @@ CREATE TABLE articles (
     article_type    TEXT,
     source_info     TEXT,
     editor_notes    TEXT,
+    seo_suggestions TEXT,                       -- SEO/GEO 추천 제목·부제(각 3개) JSON
     status          TEXT NOT NULL DEFAULT 'split',
     published_url   TEXT,
     published_at    TIMESTAMPTZ,
