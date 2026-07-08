@@ -122,6 +122,7 @@ function applySeo(targetId, btn, defaultLabel) {
   var input = document.getElementById(targetId);
   input.value = text;
   input.focus();
+  if (window._markEditDirty) window._markEditDirty();
   btn.textContent = '적용됨 ✓';
   setTimeout(function () { btn.textContent = defaultLabel; }, 1200);
 }
@@ -181,6 +182,29 @@ function applySeo(targetId, btn, defaultLabel) {
   // 저장 직전 마지막 동기화 (시각 모드였다면 반영)
   var form = document.getElementById('editform');
   if (form) form.addEventListener('submit', function () { if (!htmlMode) syncToRaw(); });
+})();
+
+// ── 수정 후 저장 안 하고 이탈 시 경고 + Ctrl+S 저장 ──
+(function () {
+  var form = document.getElementById('editform');
+  if (!form) return;
+  var dirty = false;
+  function markDirty() { dirty = true; }
+  form.addEventListener('input', markDirty);           // 제목·부제·본문(wysiwyg/raw)
+  form.addEventListener('change', markDirty);          // 카테고리 select
+  window._markEditDirty = markDirty;                   // SEO 적용 버튼 등 프로그램적 변경용
+  form.addEventListener('submit', function () { dirty = false; });
+  window.addEventListener('beforeunload', function (e) {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = '';                                // 브라우저 기본 "변경사항 저장 안 됨" 경고
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      form.requestSubmit();                            // submit 리스너 경유(본문 동기화 포함)
+    }
+  });
 })();
 </script>
 {% endblock %}

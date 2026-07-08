@@ -519,14 +519,25 @@ def _message_view(request: Request, msg: str, archived: bool):
     for a in arts:
         by_msg.setdefault(a["email_id"], []).append(a)
     total_arts = 0
+    state_counts = {"pending": 0, "draft": 0, "published": 0, "skip": 0}
     for m in msgs:
         m["articles"] = by_msg.get(m["id"], [])
         total_arts += len(m["articles"])
+        # 카드 상태: 발행완료(기사 전부 발행) / 초안(기사 있음) / 보류(SKIP) / 미생성
+        m["pub_count"] = sum(1 for a in m["articles"] if a["status"] == "published")
+        if m["articles"]:
+            m["state"] = "published" if m["pub_count"] == len(m["articles"]) else "draft"
+        elif m.get("pipeline") == "SKIP":
+            m["state"] = "skip"
+        else:
+            m["state"] = "pending"
+        state_counts[m["state"]] += 1
     return templates.TemplateResponse(
         request, "inbox.html",
         {"msgs": msgs, "msg": msg, "total_arts": total_arts, "processing_ids": processing_ids,
          "processing_label": processing_label, "processing_cls": processing_cls,
          "pending_map": pending_map, "archived": archived, "last_error": last_error,
+         "state_counts": state_counts,
          "sub": sub, "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
@@ -787,6 +798,18 @@ def message_archive(request: Request, message_id: int):
     conn.commit()
     conn.close()
     return RedirectResponse(request.headers.get("referer") or "/inbox", status_code=303)
+
+
+@app.post("/messages/{message_id}/unarchive")
+def message_unarchive(request: Request, message_id: int):
+    """보관함 메일을 기사함으로 복원(자동 삭제 대상에서도 제외)."""
+    t = _tenant(request)
+    conn = db.connect()
+    conn.execute("UPDATE messages SET archived_at=NULL WHERE id=? AND tenant_id=? AND archived_at IS NOT NULL",
+                 (message_id, t))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(request.headers.get("referer") or "/archive", status_code=303)
 
 
 @app.post("/jobs/{job_id}/cancel")

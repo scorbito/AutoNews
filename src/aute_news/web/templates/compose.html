@@ -14,10 +14,12 @@
   <textarea name="body" style="min-height:180px;" placeholder="보도자료 본문이나 기사 자료 텍스트를 붙여넣으세요."></textarea>
 
   <label>문서 첨부 <span class="muted">(HWP·HWPX·PDF·DOC·DOCX — 여러 개 선택 가능)</span></label>
-  <input type="file" name="files" multiple accept=".hwp,.hwpx,.pdf,.doc,.docx">
+  <input type="file" id="pickFiles" name="files" multiple accept=".hwp,.hwpx,.pdf,.doc,.docx">
+  <div id="listFiles" class="fsel"></div>
 
   <label>이미지 <span class="muted">(여러 개 선택 가능 — 기사에 자동 매칭)</span></label>
-  <input type="file" name="images" multiple accept="image/*">
+  <input type="file" id="pickImages" name="images" multiple accept="image/*">
+  <div id="listImages" class="fsel fsel-imgs"></div>
 
   <label>링크 <span class="muted">(웹 기사·다운로드 링크, 한 줄에 하나)</span></label>
   <textarea name="links" style="min-height:70px;" placeholder="https://example.com/article&#10;https://example.com/file.hwp"></textarea>
@@ -29,4 +31,55 @@
   <p class="muted" style="font-size:12px; margin-top:8px;">
     제출하면 기사함에서 생성 진행상태를 볼 수 있어요 (건당 15~20초). 설정 ⑤의 <b>기사 스타일</b>도 함께 적용됩니다.</p>
 </form>
+
+<script>
+  // 선택 파일 미리보기 — 다시 선택하면 교체가 아니라 추가, 항목별 ✕ 제거.
+  // input.files 는 직접 수정 불가라 DataTransfer 로 재구성해 유지한다.
+  function bindPicker(inputId, listId, isImage) {
+    const inp = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    let files = [];
+    inp.addEventListener('change', () => {
+      for (const f of inp.files) {
+        if (!files.some(x => x.name === f.name && x.size === f.size)) files.push(f);
+      }
+      sync();
+    });
+    function sync() {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      inp.files = dt.files;
+      render();
+    }
+    function fmtSize(n) {
+      return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+    }
+    function render() {
+      list.innerHTML = '';
+      files.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'fsel-item';
+        if (isImage) {
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(f);
+          img.onload = () => URL.revokeObjectURL(img.src);
+          item.appendChild(img);
+        }
+        const name = document.createElement('span');
+        name.className = 'fsel-name';
+        name.textContent = f.name;
+        const size = document.createElement('span');
+        size.className = 'fsel-size';
+        size.textContent = fmtSize(f.size);
+        const x = document.createElement('button');
+        x.type = 'button'; x.className = 'fsel-x'; x.textContent = '✕'; x.title = '제거';
+        x.onclick = () => { files.splice(i, 1); sync(); };
+        item.append(name, size, x);
+        list.appendChild(item);
+      });
+    }
+  }
+  bindPicker('pickFiles', 'listFiles', false);
+  bindPicker('pickImages', 'listImages', true);
+</script>
 {% endblock %}

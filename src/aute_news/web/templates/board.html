@@ -11,6 +11,10 @@
   }
   .paper-masthead .tagline { color: var(--muted); font-size: 13px; margin-top: 4px; letter-spacing: 2px; }
   .lead { border-bottom: 1px solid var(--gray-200); padding-bottom: 22px; margin-bottom: 22px; }
+  .lead-cols { display: flex; gap: 24px; align-items: flex-start; }
+  .lead-txt { flex: 1 1 auto; min-width: 0; }
+  .lead-img { flex: 0 0 38%; }
+  .lead-img img { width: 100%; border-radius: 8px; display: block; }
   .lead .cat, .pcard .cat { color: #c0392b; font-weight: 700; font-size: 12px; letter-spacing: .5px; }
   .lead h1 {
     font-family: var(--font-serif); font-size: 32px; line-height: 1.25; margin: 8px 0 8px;
@@ -18,12 +22,20 @@
   .lead h1 a, .pcard h3 a { color: #111; }
   .lead h1 a:hover, .pcard h3 a:hover { text-decoration: none; color: var(--brand-700); }
   .lead .sub { color: var(--gray-600); font-size: 17px; }
+  .lead .excerpt { color: var(--gray-600); font-size: 14.5px; line-height: 1.75; margin-top: 10px; }
   .pgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px 28px; }
-  .pcard { border-bottom: 1px solid var(--gray-200); padding-bottom: 16px; }
+  .pcard { border-bottom: 1px solid var(--gray-200); padding-bottom: 16px;
+           display: flex; gap: 14px; justify-content: space-between; }
+  .pcard .ptxt { min-width: 0; }
+  .pcard .pthumb { flex: 0 0 86px; }
+  .pcard .pthumb img { width: 86px; height: 64px; object-fit: cover; border-radius: 6px; display: block; }
   .pcard h3 { font-family: var(--font-serif); font-size: 19px; line-height: 1.35; margin: 6px 0 5px; }
   .pcard .sub { color: var(--muted); font-size: 14px; }
   .pcard .when { color: var(--gray-400); font-size: 12px; margin-top: 6px; }
-  @media (max-width: 720px){ .pgrid { grid-template-columns: 1fr; } .paper-masthead .name{ font-size:30px; } }
+  @media (max-width: 720px){
+    .pgrid { grid-template-columns: 1fr; } .paper-masthead .name{ font-size:30px; }
+    .lead-cols { flex-direction: column-reverse; } .lead-img { flex: none; width: 100%; }
+  }
 </style>
 {% endblock %}
 {% block body %}
@@ -33,7 +45,7 @@
 
 <div class="paper-masthead">
   <div class="name">{{ paper }}</div>
-  <div class="tagline">A U T O N E W S　P R E S S</div>
+  <div class="tagline">N E W S F L O W　A I　P R E S S</div>
 </div>
 
 {% if not arts %}
@@ -41,20 +53,36 @@
 {% else %}
   {% set lead = arts[0] %}
   <div class="lead">
-    {% if lead.category_code %}<div class="cat">{{ cats.get(lead.category_code, lead.category_code) }}</div>{% endif %}
-    <h1><a href="/board/{{ lead.id }}">{{ lead.headline or lead.title or '(제목 없음)' }}</a></h1>
-    {% if lead.subtitle %}<div class="sub">{{ lead.subtitle }}</div>{% endif %}
-    <div class="when muted" style="margin-top:8px; font-size:12px;">
-      {% if lead.published_at %}{{ lead.published_at }}{% endif %}</div>
+    <div class="lead-cols">
+      <div class="lead-txt">
+        {% if lead.category_code %}<div class="cat">{{ cats.get(lead.category_code, lead.category_code) }}</div>{% endif %}
+        <h1><a href="/board/{{ lead.id }}">{{ lead.headline or lead.title or '(제목 없음)' }}</a></h1>
+        {% if lead.subtitle %}<div class="sub">{{ lead.subtitle }}</div>{% endif %}
+        {% if lead.content_html %}
+        <div class="excerpt">{{ lead.content_html|striptags|truncate(180) }}
+          <a href="/board/{{ lead.id }}">전문 보기 →</a></div>
+        {% endif %}
+        <div class="when muted" style="margin-top:8px; font-size:12px;">
+          {% if lead.published_at %}{{ lead.published_at }}{% endif %}</div>
+      </div>
+      {% if lead.thumb_id %}
+      <a class="lead-img" href="/board/{{ lead.id }}"><img src="/img/{{ lead.thumb_id }}" alt=""></a>
+      {% endif %}
+    </div>
   </div>
 
   <div class="pgrid">
     {% for a in arts[1:] %}
     <article class="pcard">
-      {% if a.category_code %}<div class="cat">{{ cats.get(a.category_code, a.category_code) }}</div>{% endif %}
-      <h3><a href="/board/{{ a.id }}">{{ a.headline or a.title or '(제목 없음)' }}</a></h3>
-      {% if a.subtitle %}<div class="sub">{{ a.subtitle }}</div>{% endif %}
-      {% if a.published_at %}<div class="when">{{ a.published_at }}</div>{% endif %}
+      <div class="ptxt">
+        {% if a.category_code %}<div class="cat">{{ cats.get(a.category_code, a.category_code) }}</div>{% endif %}
+        <h3><a href="/board/{{ a.id }}">{{ a.headline or a.title or '(제목 없음)' }}</a></h3>
+        {% if a.subtitle %}<div class="sub">{{ a.subtitle }}</div>{% endif %}
+        {% if a.published_at %}<div class="when">{{ a.published_at }}</div>{% endif %}
+      </div>
+      {% if a.thumb_id %}
+      <a class="pthumb" href="/board/{{ a.id }}"><img src="/img/{{ a.thumb_id }}" alt=""></a>
+      {% endif %}
     </article>
     {% endfor %}
   </div>

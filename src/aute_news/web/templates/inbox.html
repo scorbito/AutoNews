@@ -36,21 +36,36 @@
 </div>
 
 {% if archived %}
-<p class="muted" style="margin:6px 0 16px;">
-  🗄 <b>메일 수집</b> 시 기사함의 이전 메일·기사가 이곳으로 옮겨집니다. <b>7일</b> 후 자동 삭제됩니다.</p>
+<p class="muted" style="margin:6px 0 12px;">
+  🗄 <b>메일 수집</b> 시 기사함의 이전 메일·기사가 이곳으로 옮겨집니다. <b>7일</b> 후 자동 삭제됩니다.
+  <b>↩ 기사함 복원</b>으로 되돌릴 수 있습니다.</p>
 {% else %}
 <div class="row" style="gap:10px; margin-bottom:6px;">
   <form method="post" action="/messages/process-all">
     <button type="submit" class="green">⚡ 미처리 전체 기사 생성</button>
   </form>
 </div>
-<p class="muted" style="margin:6px 0 16px;">
-  ① 왼쪽 <b>📥 메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
+<p class="muted" style="margin:6px 0 12px;">
+  ① <b>📥 메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
+{% endif %}
+
+{% if msgs %}
+{# 상태 필터 — 카드 data-state 를 클라이언트에서 숨김/표시 (기사함·보관함 공통) #}
+{% set flabel = [('all', '전체', msgs|length), ('pending', '미생성', state_counts.pending),
+                 ('draft', '초안', state_counts.draft), ('published', '발행완료', state_counts.published),
+                 ('skip', '보류', state_counts.skip)] %}
+<div class="row state-filter" style="gap:6px; margin-bottom:14px;">
+  {% for key, name, cnt in flabel %}
+  {% if key == 'all' or cnt %}
+  <button type="button" class="chip{% if key == 'all' %} active{% endif %}" data-filter="{{ key }}">{{ name }} {{ cnt }}</button>
+  {% endif %}
+  {% endfor %}
+</div>
 {% endif %}
 
 {% for m in msgs %}
 {% set busy = m.id in processing_ids or m.id in pending_map %}
-<div class="card msg-card">
+<div class="card msg-card" data-state="{{ m.state }}">
   <div class="msg-head">
     <div class="msg-info">
       <a href="/messages/{{ m.id }}" class="msg-subj">📧 {{ m.subject or '(제목 없음)' }}</a>
@@ -77,7 +92,10 @@
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
           <button type="submit" class="green sm">⚡ 기사 생성</button></form>
         {% endif %}
-        {% if not archived %}
+        {% if archived %}
+        <form method="post" action="/messages/{{ m.id }}/unarchive">
+          <button type="submit" class="secondary sm" title="기사함으로 되돌리기 (자동 삭제 대상에서 제외)">↩ 기사함 복원</button></form>
+        {% else %}
         <form method="post" action="/messages/{{ m.id }}/archive">
           <button type="submit" class="secondary sm">🗄 보관함 이동</button></form>
         {% endif %}
@@ -89,7 +107,12 @@
   <details class="arts" open>
     <summary>
       <span class="arts-title">기사 {{ m.articles|length }}건</span>
-      {% if not busy %}
+      {% if m.pub_count == m.articles|length %}
+      <span class="tag s-published">전체 발행됨 ✓</span>
+      {% elif m.pub_count %}
+      <span class="tag s-draft">발행 {{ m.pub_count }}/{{ m.articles|length }}</span>
+      {% endif %}
+      {% if not busy and m.pub_count < m.articles|length %}
       <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()"
             data-confirm="이 메일의 기사 전체를 발행합니다. 계속할까요?">
         {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
@@ -159,6 +182,28 @@
     window.addEventListener('beforeunload', save);
     // 뒤로가기(bfcache)로 목록에 돌아올 때도 이전 스크롤 복원
     window.addEventListener('pageshow', e => { if (e.persisted) restore(); });
+  })();
+
+  // ── 상태 필터 (기사함·보관함 공통) ──
+  // 선택을 경로별로 기억해 뒤로가기·새로고침에도 유지. 스크롤 복원과 함께 동작.
+  (function () {
+    const chips = document.querySelectorAll('.state-filter .chip');
+    if (!chips.length) return;
+    const FKEY = 'stateFilter:' + location.pathname;
+    function apply(state) {
+      chips.forEach(c => c.classList.toggle('active', c.dataset.filter === state));
+      document.querySelectorAll('.msg-card').forEach(card => {
+        card.style.display = (state === 'all' || card.dataset.state === state) ? '' : 'none';
+      });
+    }
+    chips.forEach(c => c.addEventListener('click', () => {
+      sessionStorage.setItem(FKEY, c.dataset.filter);
+      apply(c.dataset.filter);
+    }));
+    const saved = sessionStorage.getItem(FKEY);
+    // 저장된 필터의 칩이 사라졌으면(해당 상태 0건) 전체로 복귀
+    if (saved && saved !== 'all' && [...chips].some(c => c.dataset.filter === saved)) apply(saved);
+    else sessionStorage.removeItem(FKEY);
   })();
 
   // 기사 생성/재생성 클릭 즉시 버튼을 '생성중'으로(리다이렉트 전 잠깐) + 더블클릭 방지
