@@ -144,8 +144,22 @@
     }, true);
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { closeCollectConfirm(); closeActionConfirm(); }
+      if (e.key === 'Escape') { closeCollectConfirm(); closeActionConfirm(); closeLightbox(); }
+    });
+
+    // 이미지 라이트박스 — img.zoomable 클릭 시 크게 보기
+    function closeLightbox() { const lb = document.getElementById('lightbox'); if (lb) lb.style.display = 'none'; }
+    document.addEventListener('click', e => {
+      const img = e.target.closest && e.target.closest('img.zoomable');
+      if (!img) return;
+      document.getElementById('lbImg').src = img.dataset.full || img.src;
+      document.getElementById('lightbox').style.display = 'flex';
     });
   </script>
+
+  <!-- 이미지 라이트박스 -->
+  <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
+    <img id="lbImg" src="" alt="">
+  </div>
 </body>
 </html>

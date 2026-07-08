@@ -530,9 +530,28 @@ def _message_view(request: Request, msg: str, archived: bool):
          "sub": sub, "astatus": ASTATUS, "cats": CATEGORY_CODES})
 
 
+def _html_to_text(s: str) -> str:
+    """메일 HTML 본문 → 읽기 좋은 평문(태그·스타일 제거, 블록은 줄바꿈)."""
+    import html as _h
+    import re as _re
+    s = s or ""
+    s = _re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", s)          # 스타일/스크립트 제거
+    s = _re.sub(r"(?i)<\s*br\s*/?>", "\n", s)                            # <br> → 줄바꿈
+    s = _re.sub(r"(?i)</\s*(p|div|tr|li|h[1-6]|table)\s*>", "\n", s)     # 블록 끝 → 줄바꿈
+    s = _re.sub(r"<[^>]+>", "", s)                                       # 나머지 태그 제거
+    s = _h.unescape(s).replace("\xa0", " ")                             # &nbsp; 등 디코드
+    out, blank = [], False
+    for ln in (x.strip() for x in s.splitlines()):                      # 연속 빈 줄 1개로
+        if ln:
+            out.append(ln); blank = False
+        elif not blank:
+            out.append(""); blank = True
+    return "\n".join(out).strip()
+
+
 @app.get("/messages/{message_id}", response_class=HTMLResponse)
 def message_detail(request: Request, message_id: int):
-    """수집된 메일 1건 상세 — 본문·첨부 추출 텍스트·사진(처리 전 미리보기)."""
+    """수집된 메일 1건 상세 — 본문(평문)·첨부 추출 텍스트·사진(처리 전 미리보기)."""
     t = _tenant(request)
     conn = db.connect()
     msg = conn.execute("SELECT * FROM messages WHERE id=? AND tenant_id=?",
@@ -549,7 +568,8 @@ def message_detail(request: Request, message_id: int):
            WHERE a.message_pk=? AND ar.tenant_id=?""", (message_id, t)).fetchone()["c"]
     conn.close()
     return templates.TemplateResponse(
-        request, "message_detail.html", {"m": msg, "atts": atts, "art_count": art_count})
+        request, "message_detail.html",
+        {"m": msg, "atts": atts, "art_count": art_count, "body_view": _html_to_text(msg["body_text"])})
 
 
 # ── 작업 큐 (수집/생성/발행을 순차 처리) ──────────────

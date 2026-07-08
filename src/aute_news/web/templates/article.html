@@ -20,7 +20,7 @@
     <div style="margin-top:18px;">
       {% for im in images %}
       <figure style="margin:16px 0;">
-        <img src="/img/{{ im.id }}" style="max-width:100%; border-radius:6px;">
+        <img class="zoomable" src="/img/{{ im.id }}" style="max-width:100%; border-radius:6px;">
         {% if im.caption %}<figcaption class="muted" style="text-align:center; font-size:14px;">{{ im.caption }}</figcaption>{% endif %}
       </figure>
       {% endfor %}

@@ -62,7 +62,7 @@
       {% for im in images %}
       <div style="border:1px solid {% if im.selected %}#137333{% else %}#eee{% endif %};
                   border-radius:8px; padding:8px; text-align:center;">
-        <img src="/img/{{ im.id }}" style="max-width:100%; max-height:140px; object-fit:contain;">
+        <img class="zoomable" src="/img/{{ im.id }}" style="max-width:100%; max-height:140px; object-fit:contain;">
         <div class="muted" style="font-size:12px;">
           {{ im.width }}×{{ im.height }} ·
           <span class="tag {% if im.kind=='photo' %}s-done{% else %}s-manual{% endif %}">{{ im.kind }}</span>

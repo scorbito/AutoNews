@@ -157,6 +157,8 @@
     function save() { sessionStorage.setItem(KEY, String(window.scrollY)); }
     window.addEventListener('pagehide', save);
     window.addEventListener('beforeunload', save);
+    // 뒤로가기(bfcache)로 목록에 돌아올 때도 이전 스크롤 복원
+    window.addEventListener('pageshow', e => { if (e.persisted) restore(); });
   })();
 
   // 기사 생성/재생성 클릭 즉시 버튼을 '생성중'으로(리다이렉트 전 잠깐) + 더블클릭 방지

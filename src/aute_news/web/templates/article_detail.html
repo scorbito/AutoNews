@@ -93,7 +93,7 @@
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {% for im in images %}
       <div style="text-align:center; max-width:120px; position:relative;">
-        <img src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
+        <img class="zoomable" src="/img/{{ im.id }}" style="max-height:90px; border-radius:6px;">
         <form method="post" action="/a/{{ a.id }}/image/{{ im.id }}/remove" style="position:absolute; top:2px; right:2px;">
           <input type="hidden" name="origin" value="{{ origin }}">
           <button type="submit" title="이 사진 제거"
