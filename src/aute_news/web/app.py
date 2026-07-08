@@ -775,8 +775,10 @@ def messages_process_all(request: Request, background: BackgroundTasks):
     """아직 기사 안 만든 메일 전체를 큐에 적재."""
     t = _tenant(request)
     conn = db.connect()
+    # 기사함(비보관)·비보류 메일만 — 버튼의 '미처리 N건' 집계와 동일 기준
     rows = conn.execute(
-        """SELECT m.id FROM messages m WHERE m.tenant_id=? AND NOT EXISTS (
+        """SELECT m.id FROM messages m WHERE m.tenant_id=? AND m.archived_at IS NULL
+           AND (m.pipeline IS NULL OR m.pipeline <> 'SKIP') AND NOT EXISTS (
                SELECT 1 FROM articles ar JOIN attachments a ON a.id=ar.attachment_id
                WHERE a.message_pk=m.id) ORDER BY m.id""", (t,)).fetchall()
     conn.close()
