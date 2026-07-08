@@ -54,8 +54,18 @@
           <option value="{{ code }}" {% if a.category_code==code %}selected{% endif %}>{{ code }} {{ name }}</option>
         {% endfor %}
       </select>
-      <label>본문 (HTML)</label>
-      <textarea name="content_html">{{ a.content_html or '' }}</textarea>
+      <label>본문</label>
+      <div class="wysiwyg-tools">
+        <button type="button" data-cmd="bold" title="굵게"><b>B</b></button>
+        <button type="button" data-cmd="formatBlock" data-val="h3" title="소제목">소제목</button>
+        <button type="button" data-cmd="formatBlock" data-val="p" title="본문으로">본문</button>
+        <button type="button" data-cmd="insertUnorderedList" title="목록">• 목록</button>
+        <button type="button" data-cmd="createLink" title="링크">🔗 링크</button>
+        <span class="wt-sep"></span>
+        <button type="button" id="htmlToggle" class="wt-html" title="HTML 직접 편집">&lt;/&gt; HTML</button>
+      </div>
+      <div id="wysiwyg" class="wysiwyg" contenteditable="true">{{ a.content_html|safe }}</div>
+      <textarea id="rawHtml" name="content_html" class="wysiwyg-raw" style="display:none;">{{ a.content_html or '' }}</textarea>
     </form>
     <div class="row" style="margin-top:12px;">
       <button type="submit" form="editform">💾 저장</button>
@@ -115,5 +125,62 @@ function applySeo(targetId, btn, defaultLabel) {
   btn.textContent = '적용됨 ✓';
   setTimeout(function () { btn.textContent = defaultLabel; }, 1200);
 }
+
+// ── 본문 WYSIWYG 편집기 ──
+// 기자는 '보이는 대로' 편집하고, 저장은 항상 HTML(rawHtml textarea)로 나간다.
+(function () {
+  var wys = document.getElementById('wysiwyg');
+  var raw = document.getElementById('rawHtml');
+  var toggle = document.getElementById('htmlToggle');
+  if (!wys || !raw) return;
+  var htmlMode = false;
+
+  function syncToRaw() { raw.value = wys.innerHTML; }
+  function syncToVisual() { wys.innerHTML = raw.value; }
+
+  // 툴바 명령 (execCommand: 구식이지만 모든 브라우저에서 동작, 라이브러리 불필요)
+  document.querySelectorAll('.wysiwyg-tools button[data-cmd]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (htmlMode) return;         // HTML 직접편집 중엔 툴바 비활성
+      wys.focus();
+      var cmd = b.dataset.cmd, val = b.dataset.val || null;
+      if (cmd === 'createLink') {
+        var url = prompt('링크 주소(URL)를 입력하세요', 'https://');
+        if (!url) return;
+        document.execCommand('createLink', false, url);
+      } else if (cmd === 'formatBlock') {
+        document.execCommand('formatBlock', false, val);
+      } else {
+        document.execCommand(cmd, false, null);
+      }
+      syncToRaw();
+    });
+  });
+
+  // 편집 중 계속 동기화 (저장 누락 방지)
+  wys.addEventListener('input', syncToRaw);
+
+  // HTML 직접 편집 토글
+  toggle.addEventListener('click', function () {
+    htmlMode = !htmlMode;
+    if (htmlMode) {                 // 시각 → HTML
+      syncToRaw();
+      wys.style.display = 'none';
+      raw.style.display = 'block';
+      toggle.classList.add('on');
+    } else {                        // HTML → 시각
+      syncToVisual();
+      raw.style.display = 'none';
+      wys.style.display = 'block';
+      toggle.classList.remove('on');
+    }
+  });
+  // HTML 모드에서 텍스트 고치면 그대로 저장값
+  raw.addEventListener('input', function () { if (htmlMode) { /* raw가 진실원본 */ } });
+
+  // 저장 직전 마지막 동기화 (시각 모드였다면 반영)
+  var form = document.getElementById('editform');
+  if (form) form.addEventListener('submit', function () { if (!htmlMode) syncToRaw(); });
+})();
 </script>
 {% endblock %}

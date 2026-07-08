@@ -305,6 +305,33 @@ input:focus, textarea:focus, select:focus {
 textarea { min-height: 420px; line-height: 1.6; resize: vertical; }
 pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.6; font-size: 14px; }
 
+/* ── 본문 WYSIWYG 편집기 ─────────────────────────────── */
+.wysiwyg-tools {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  border: 1px solid var(--gray-300); border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0; padding: 6px 8px; background: var(--gray-50);
+}
+.wysiwyg-tools button {
+  background: var(--surface); color: var(--gray-700); border: 1px solid var(--gray-300);
+  padding: 5px 10px; font-size: 13px; font-weight: 600; border-radius: var(--r-sm);
+  min-width: 0;
+}
+.wysiwyg-tools button:hover { background: var(--brand-50); color: var(--brand-700); border-color: var(--brand-500); }
+.wysiwyg-tools .wt-sep { width: 1px; align-self: stretch; background: var(--gray-300); margin: 2px 4px; }
+.wysiwyg-tools .wt-html { margin-left: auto; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.wysiwyg-tools .wt-html.on { background: var(--brand-600); color: #fff; border-color: var(--brand-600); }
+.wysiwyg {
+  min-height: 420px; max-height: 620px; overflow: auto; padding: 14px 16px; line-height: 1.8;
+  border: 1px solid var(--gray-300); border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: var(--surface); color: var(--text); font-size: 14px;
+}
+.wysiwyg:focus { outline: none; border-color: var(--brand-500); box-shadow: 0 0 0 3px var(--brand-50); }
+.wysiwyg p { margin: 0 0 12px; }
+.wysiwyg h3 { margin: 18px 0 8px; font-size: 16px; font-weight: 700; }
+.wysiwyg ul, .wysiwyg ol { margin: 0 0 12px; padding-left: 22px; }
+.wysiwyg:empty::before { content: '본문을 입력하세요…'; color: var(--muted); }
+.wysiwyg-raw { border-radius: 0 0 var(--r-sm) var(--r-sm); }
+
 /* ── 유틸 ────────────────────────────────────────────── */
 .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
