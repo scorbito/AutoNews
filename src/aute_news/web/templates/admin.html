@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}관리자{% endblock %}
 {% block body %}
-<h2>관리자 — 기자 온보딩</h2>
+{% from "_icons.html" import icon %}
+<h2 style="margin:0 0 16px;">{{ icon('wrench', 20) }} 관리자 — 기자 온보딩</h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 <div class="card" style="margin-bottom:18px;">
@@ -32,7 +33,7 @@
     </div>
     <form method="post" action="/admin/tenant/{{ t.id }}/delete"
           data-confirm="기자 '{{ t.name }}'(#{{ t.id }})와 모든 메일·기사·계정·파일을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?">
-      <button type="submit" class="danger sm">🗑 삭제</button>
+      <button type="submit" class="danger sm">{{ icon('trash', 13) }} 삭제</button>
     </form>
   </div>
 
@@ -69,7 +70,7 @@
         <div style="grid-column:1/-1;">
           <label style="font-weight:normal;">
             <input type="checkbox" name="collect_enabled" value="1" {% if u.collect_enabled %}checked{% endif %}> 예약 수집 포함</label>
-          <div class="row"><button type="submit" class="gray">💾 메일 저장</button></div>
+          <div class="row"><button type="submit" class="gray">{{ icon('save', 14) }} 메일 저장</button></div>
         </div>
       </form>
     </details>
@@ -114,7 +115,7 @@
           <span class="muted">시:분, 쉼표 구분</span>
         </div>
       </div>
-      <div class="row"><button type="submit">💾 설정 저장</button></div>
+      <div class="row"><button type="submit">{{ icon('save', 14) }} 설정 저장</button></div>
     </form>
   </details>
 </div>

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}구독·결제{% endblock %}
 {% block body %}
-<h2 style="margin:0 0 16px;">구독</h2>
+{% from "_icons.html" import icon %}
+<h2 style="margin:0 0 16px;">{{ icon('credit-card', 20) }} 구독</h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 {% set s = sub %}
@@ -18,10 +19,10 @@
 
   {% if s.blocked_reason == 'quota' %}
   <div class="job-banner error" style="margin:14px 0 0;">
-    <span>⚠️ 이번 결제주기 기사 한도를 모두 사용했습니다. 다음 결제일에 초기화됩니다.</span></div>
+    <span>{{ icon('alert', 14) }} 이번 결제주기 기사 한도를 모두 사용했습니다. 다음 결제일에 초기화됩니다.</span></div>
   {% elif not s.active %}
   <div class="job-banner error" style="margin:14px 0 0;">
-    <span>⚠️ 구독이 활성 상태가 아닙니다. 결제 후 수집·생성이 가능합니다.</span></div>
+    <span>{{ icon('alert', 14) }} 구독이 활성 상태가 아닙니다. 결제 후 수집·생성이 가능합니다.</span></div>
   {% endif %}
 
   <div style="margin-top:16px;">
@@ -50,9 +51,9 @@
     카드를 등록하면 즉시 첫 결제가 진행되고 30일 구독이 시작됩니다. 이후 매달 자동 결제됩니다.</p>
   {% if toss_client_key %}
   <button type="button" id="payBtn" onclick="startBilling()">
-    💳 {{ '결제수단 변경' if has_billing_key else '구독 결제하기' }}</button>
+    {{ icon('credit-card', 15) }} {{ '결제수단 변경' if has_billing_key else '구독 결제하기' }}</button>
   {% if toss_client_key.startswith('test_') %}
-  <div class="muted" style="font-size:12px; margin-top:8px;">⚙️ 테스트 모드 — 실제 결제되지 않습니다.</div>
+  <div class="muted" style="font-size:12px; margin-top:8px;">테스트 모드 — 실제 결제되지 않습니다.</div>
   {% endif %}
   {% else %}
   <p class="muted" style="font-size:13px;">결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.</p>

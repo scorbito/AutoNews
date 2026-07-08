@@ -17,7 +17,8 @@
   @media (max-width: 720px) { .mail-connect-head { flex-direction:column; } }
 </style>
 <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
-  <h2 style="margin:0;">내 설정 — 메일 · 자동 수집</h2>
+  {% from "_icons.html" import icon %}
+  <h2 style="margin:0;">{{ icon('settings', 20) }} 내 설정 — 메일 · 자동 수집</h2>
   <a href="/logout" class="btn secondary sm">로그아웃</a>
 </div>
 
@@ -28,13 +29,13 @@
 
 {% if welcome %}
 <div class="card" style="max-width:560px; margin-bottom:16px; background:#f1f6ff; border-color:#cfe0ff;">
-  <strong>🎉 가입을 환영합니다!</strong>
+  <strong>가입을 환영합니다!</strong>
   <p class="muted" style="margin:6px 0 0; line-height:1.7;">
     <b>①</b> 메일 계정 → <b>②</b> 메일함 선택만 하면 시작할 수 있어요. 입력하면 <b>자동 저장</b>됩니다.</p>
 </div>
 {% endif %}
 
-<p class="muted" style="max-width:560px; margin:0 0 8px; font-size:12.5px;">✍️ 입력·선택하면 <b>자동 저장</b>됩니다 (저장 버튼 없음).</p>
+<p class="muted" style="max-width:560px; margin:0 0 8px; font-size:12.5px;">입력·선택하면 <b>자동 저장</b>됩니다 (저장 버튼 없음).</p>
 
 <div class="tabs" data-active="{{ active_step }}" style="max-width:560px;">
   <button type="button" class="tab {{ 'done' if s1 else '' }}" data-tab="1">① 메일 계정</button>
@@ -45,7 +46,7 @@
 </div>
 
 <p id="doneNote" class="muted" style="max-width:560px; margin:0 0 14px; color:var(--green-fg); {% if not s2 %}display:none;{% endif %}">
-  ✓ 기본 설정 완료! 기사함에서 <b>📥 메일 수집</b>으로 시작할 수 있어요. ③④는 필요할 때만 설정하세요.</p>
+  ✓ 기본 설정 완료! 기사함에서 <b>메일 수집</b>으로 시작할 수 있어요. ③④는 필요할 때만 설정하세요.</p>
 
 <!-- ① 내 메일 계정 -->
 <div class="tab-panel card" data-panel="1" style="max-width:720px;" {% if active_step != '1' %}hidden{% endif %}>
@@ -191,7 +192,7 @@
   </div>
 
   <p class="muted" style="margin-top:16px;">
-    · <b>끄기(수동)</b>: 목록에서 "📥 메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
+    · <b>끄기(수동)</b>: 목록에서 "메일 수집" → 기사 선택 → 기사화 → 검토 → 발행<br>
     · <b>켜기(자동)</b>: 설정한 시간에 ②에서 고른 메일함 자료가 자동 기사화. 발행은 위 <b>자동 발행 발신자</b> 규칙에 따름.</p>
   {% endif %}
 </div>
@@ -259,7 +260,7 @@
 
   <div style="margin-top:12px;">
     <div class="muted" style="font-size:12px; margin-bottom:4px;">
-      📝 예시 — <b>같은 자료</b>가 이 스타일로 이렇게 작성됩니다:</div>
+      예시 — <b>같은 자료</b>가 이 스타일로 이렇게 작성됩니다:</div>
     <div class="block" id="styleExampleText" style="line-height:1.75;"></div>
   </div>
 
@@ -402,11 +403,11 @@
       box.innerHTML = '<p class="muted">메일함을 불러오는 중…</p>';
       let j;
       try { j = await (await fetch('/settings/folders.json', { headers: AJ })).json(); }
-      catch (_) { box.innerHTML = '<p class="block">⚠️ 폴더를 불러오지 못했습니다.</p>'; return; }
+      catch (_) { box.innerHTML = '<p class="block">폴더를 불러오지 못했습니다.</p>'; return; }
       if (!j.ok) {
         box.innerHTML = j.error === 'no_mail'
           ? '<p class="muted">먼저 <b>① 메일 계정</b> 탭에서 계정을 입력하세요.</p>'
-          : '<p class="block">⚠️ ' + esc(j.error || '폴더를 불러오지 못했습니다') + '</p>';
+          : '<p class="block">' + esc(j.error || '폴더를 불러오지 못했습니다') + '</p>';
         return;
       }
       markMailLoginOk();
@@ -416,7 +417,7 @@
         const lab = f.label !== f.name ? esc(f.label) + ' <span class="muted">(' + esc(f.name) + ')</span>' : esc(f.label);
         h += '<label class="fitem" title="' + esc(f.label) + '"><input type="checkbox" name="folders" value="' + esc(f.name) + '" ' + ck + '><span class="ftxt">' + lab + '</span></label>';
       });
-      h += '</div><label class="fitem" style="color:#b35; margin-top:10px;"><input type="checkbox" name="collect_all" value="1" ' + (j.collect_all ? 'checked' : '') + '><span>🧪 테스트: 기간 무시하고 폴더 전체 수집</span></label>';
+      h += '</div><label class="fitem" style="color:#b35; margin-top:10px;"><input type="checkbox" name="collect_all" value="1" ' + (j.collect_all ? 'checked' : '') + '><span>테스트: 기간 무시하고 폴더 전체 수집</span></label>';
       h += '<p class="muted" style="margin-top:8px;">새로 추가한 메일함은 오늘 0시(KST) 이후 도착분부터 수집합니다. (선택 즉시 저장)</p>';
       box.innerHTML = h;
       box.querySelectorAll('input').forEach(i => i.addEventListener('change', saveFolders));

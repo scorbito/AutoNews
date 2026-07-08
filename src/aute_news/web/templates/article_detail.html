@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ a.headline or '기사' }}{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 {% set back_path = '/archive' if origin == 'archive' else '/inbox' %}
 <p><a href="{{ back_path }}">← {{ '보관함' if origin == 'archive' else '기사함' }}</a>
    · 상태 <span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span>
    {% if a.published_url %}· 발행결과 <code>{{ a.published_url }}</code>{% endif %}
-   {% if a.status == 'published' %}· <a href="/board/{{ a.id }}" target="_blank">🗞 게시판에서 보기</a>{% endif %}</p>
+   {% if a.status == 'published' %}· <a href="/board/{{ a.id }}" target="_blank">게시판에서 보기 {{ icon('external', 13) }}</a>{% endif %}</p>
 
 <div class="grid">
   <!-- 좌: 편집 -->
@@ -20,7 +21,7 @@
       {% if seo and (seo.titles or seo.subtitles) %}
       <button type="button" class="gray sm" style="margin:8px 0 0;"
               onclick="var p=document.getElementById('seoPanel'); p.style.display = (p.style.display==='none'||!p.style.display)?'block':'none';">
-        🔍 SEO·AI검색 추천 제목·부제</button>
+        {{ icon('search', 13) }} SEO·AI검색 추천 제목·부제</button>
       <div id="seoPanel" style="display:none; margin-top:8px; border:1px solid var(--border);
            border-radius:8px; padding:10px 12px; background:var(--gray-50);">
         {% if seo.titles %}
@@ -45,7 +46,7 @@
         </div>
         {% endfor %}
         {% endif %}
-        <div class="muted" style="font-size:11px; margin-top:8px;">적용 후 <b>💾 저장</b>을 눌러야 반영됩니다.</div>
+        <div class="muted" style="font-size:11px; margin-top:8px;">적용 후 <b>저장</b>을 눌러야 반영됩니다.</div>
       </div>
       {% endif %}
       <label>카테고리</label>
@@ -60,7 +61,7 @@
         <button type="button" data-cmd="formatBlock" data-val="h3" title="소제목">소제목</button>
         <button type="button" data-cmd="formatBlock" data-val="p" title="본문으로">본문</button>
         <button type="button" data-cmd="insertUnorderedList" title="목록">• 목록</button>
-        <button type="button" data-cmd="createLink" title="링크">🔗 링크</button>
+        <button type="button" data-cmd="createLink" title="링크">{{ icon('link', 13) }} 링크</button>
         <span class="wt-sep"></span>
         <button type="button" id="htmlToggle" class="wt-html" title="HTML 직접 편집">&lt;/&gt; HTML</button>
       </div>
@@ -68,9 +69,9 @@
       <textarea id="rawHtml" name="content_html" class="wysiwyg-raw" style="display:none;">{{ a.content_html or '' }}</textarea>
     </form>
     <div class="row" style="margin-top:12px;">
-      <button type="submit" form="editform">💾 저장</button>
-      <form method="post" action="/a/{{ a.id }}/review"><input type="hidden" name="origin" value="{{ origin }}"><button class="gray" type="submit">✓ 검토완료</button></form>
-      <form method="post" action="/a/{{ a.id }}/publish" data-confirm="이 기사를 발행합니다. 계속할까요?"><input type="hidden" name="origin" value="{{ origin }}"><button class="publish" type="submit">🚀 발행</button></form>
+      <button type="submit" form="editform">{{ icon('save', 15) }} 저장</button>
+      <form method="post" action="/a/{{ a.id }}/review"><input type="hidden" name="origin" value="{{ origin }}"><button class="gray" type="submit">{{ icon('check', 15) }} 검토완료</button></form>
+      <form method="post" action="/a/{{ a.id }}/publish" data-confirm="이 기사를 발행합니다. 계속할까요?"><input type="hidden" name="origin" value="{{ origin }}"><button class="publish" type="submit">{{ icon('send', 15) }} 발행</button></form>
     </div>
     <p class="muted">※ 로컬·CMS 미설정이면 발행 게시판(미리보기), 운영서버+CMS 설정이면 실제 발행됩니다.</p>
   </div>
@@ -93,7 +94,7 @@
 
     {% if editor_notes and (editor_notes.warnings or editor_notes.verify_needed or editor_notes.missing_5w1h) %}
     <h3>편집자 확인</h3>
-    {% for w in editor_notes.warnings %}<p class="block">⚠️ {{ w }}</p>{% endfor %}
+    {% for w in editor_notes.warnings %}<p class="block">{{ icon('alert', 14) }} {{ w }}</p>{% endfor %}
     {% for v in editor_notes.verify_needed %}<p class="muted">· 확인: {{ v }}</p>{% endfor %}
     {% for m in editor_notes.missing_5w1h %}<p class="muted">· 누락: {{ m }}</p>{% endfor %}
     {% endif %}

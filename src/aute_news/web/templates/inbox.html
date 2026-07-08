@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block title %}기사함{% endblock %}
 {% block body %}
-<h2 style="text-align:center; margin:0 0 16px;">
-  {{ '보관함' if archived else '기사함' }} <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
+{% from "_icons.html" import icon %}
+<h2 style="margin:0 0 16px;">
+  {{ icon('archive', 20) if archived else icon('inbox', 20) }} {{ '보관함' if archived else '기사함' }}
+  <span class="sub">메일 {{ msgs|length }} · 기사 {{ total_arts }}</span></h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 {% if last_error %}
 <div class="job-banner error" style="justify-content:space-between;">
-  <span>⚠️ {{ last_error }}</span>
+  <span>{{ icon('alert', 15) }} {{ last_error }}</span>
   <a href="/settings" class="btn sm secondary">내 설정 열기</a>
 </div>
 {% endif %}
@@ -15,9 +17,9 @@
 <div class="job-banner error" style="justify-content:space-between;">
   <span>
     {% if sub.blocked_reason == 'quota' %}
-    ⚠️ 이번 결제주기 기사 한도({{ sub.quota }}건)를 모두 사용했습니다. 수집·생성이 일시 정지됩니다 — 다음 결제일에 초기화됩니다.
+    {{ icon('alert', 15) }} 이번 결제주기 기사 한도({{ sub.quota }}건)를 모두 사용했습니다. 수집·생성이 일시 정지됩니다 — 다음 결제일에 초기화됩니다.
     {% else %}
-    ⚠️ 구독이 필요합니다. 결제 후 메일 수집·기사 생성이 가능합니다.
+    {{ icon('alert', 15) }} 구독이 필요합니다. 결제 후 메일 수집·기사 생성이 가능합니다.
     {% endif %}
   </span>
   <a href="/billing" class="btn sm secondary">구독 보기</a>
@@ -37,16 +39,18 @@
 
 {% if archived %}
 <p class="muted" style="margin:6px 0 12px;">
-  🗄 <b>메일 수집</b> 시 기사함의 이전 메일·기사가 이곳으로 옮겨집니다. <b>7일</b> 후 자동 삭제됩니다.
-  <b>↩ 기사함 복원</b>으로 되돌릴 수 있습니다.</p>
+  <b>메일 수집</b> 시 기사함의 이전 메일·기사가 이곳으로 옮겨집니다. <b>7일</b> 후 자동 삭제됩니다.
+  <b>기사함 복원</b>으로 되돌릴 수 있습니다.</p>
 {% else %}
+{% if state_counts.pending %}
 <div class="row" style="gap:10px; margin-bottom:6px;">
   <form method="post" action="/messages/process-all">
-    <button type="submit" class="green">⚡ 미처리 전체 기사 생성</button>
+    <button type="submit" class="green">{{ icon('zap', 15) }} 미처리 {{ state_counts.pending }}건 기사 생성</button>
   </form>
 </div>
+{% endif %}
 <p class="muted" style="margin:6px 0 12px;">
-  ① <b>📥 메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
+  ① <b>메일 수집</b> → ② 메일 카드의 <b>기사 생성</b>(분할·사진매칭) → ③ 그 밑 기사를 <b>검토·발행</b>(승인요청).</p>
 {% endif %}
 
 {% if msgs %}
@@ -68,11 +72,11 @@
 <div class="card msg-card" data-state="{{ m.state }}">
   <div class="msg-head">
     <div class="msg-info">
-      <a href="/messages/{{ m.id }}" class="msg-subj">📧 {{ m.subject or '(제목 없음)' }}</a>
+      <a href="/messages/{{ m.id }}" class="msg-subj">{{ icon('mail', 15) }} {{ m.subject or '(제목 없음)' }}</a>
       <div class="muted msg-meta">
-        {% if m.account == 'manual' %}<span class="tag s-published">✏️ 직접 작성</span> {% endif %}{{ m.sender }} · {{ m.date }} ·
+        {% if m.account == 'manual' %}<span class="tag s-published">직접 작성</span> {% endif %}{{ m.sender }} · {{ m.date }} ·
         {% if m.att_count %}{{ m.att_formats }} ({{ m.att_count }}){% else %}본문{% endif %}
-        {% if m.img_count %} · 📷 {{ m.img_count }}{% endif %}
+        {% if m.img_count %} · {{ icon('camera', 13) }} {{ m.img_count }}{% endif %}
         {% if m.pipeline == 'SKIP' %} · <span class="tag s-pending" title="기사 내용이 없어 보류됨 (배포계획·일정표 등)">보류</span>{% endif %}
       </div>
     </div>
@@ -81,23 +85,23 @@
         <button type="button" class="{{ processing_cls }} sm" disabled><span class="btn-spin"></span> {{ processing_label }}</button>
       {% elif m.id in pending_map %}
         <form method="post" action="/jobs/{{ pending_map[m.id].job_id }}/cancel">
-          <button type="submit" class="wait sm" title="클릭하면 대기 취소">⏳ {{ '발행' if pending_map[m.id].kind == 'publish' else '생성' }} 대기중 ✕</button>
+          <button type="submit" class="wait sm" title="클릭하면 대기 취소">{{ icon('clock', 13) }} {{ '발행' if pending_map[m.id].kind == 'publish' else '생성' }} 대기중 ✕</button>
         </form>
       {% else %}
         {% if m.articles %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form"
               data-confirm="기존 기사를 새로 만든 내용으로 교체합니다. 계속할까요?">
-          <button type="submit" class="gray sm">↻ 재생성</button></form>
+          <button type="submit" class="gray sm">{{ icon('rotate', 13) }} 재생성</button></form>
         {% else %}
         <form method="post" action="/messages/{{ m.id }}/process" class="gen-form">
-          <button type="submit" class="green sm">⚡ 기사 생성</button></form>
+          <button type="submit" class="green sm">{{ icon('zap', 13) }} 기사 생성</button></form>
         {% endif %}
         {% if archived %}
         <form method="post" action="/messages/{{ m.id }}/unarchive">
-          <button type="submit" class="secondary sm" title="기사함으로 되돌리기 (자동 삭제 대상에서 제외)">↩ 기사함 복원</button></form>
+          <button type="submit" class="secondary sm" title="기사함으로 되돌리기 (자동 삭제 대상에서 제외)">{{ icon('archive-restore', 13) }} 기사함 복원</button></form>
         {% else %}
         <form method="post" action="/messages/{{ m.id }}/archive">
-          <button type="submit" class="secondary sm">🗄 보관함 이동</button></form>
+          <button type="submit" class="secondary sm">{{ icon('archive', 13) }} 보관함 이동</button></form>
         {% endif %}
       {% endif %}
     </div>
@@ -116,7 +120,7 @@
       <form method="post" action="/articles/bulk" class="arts-pub" onclick="event.stopPropagation()"
             data-confirm="이 메일의 기사 전체를 발행합니다. 계속할까요?">
         {% for a in m.articles %}<input type="hidden" name="ids" value="{{ a.id }}">{% endfor %}
-        <button type="submit" class="publish sm" name="action" value="publish">🚀 전체 발행</button>
+        <button type="submit" class="publish sm" name="action" value="publish">{{ icon('send', 13) }} 전체 발행</button>
       </form>
       {% endif %}
     </summary>
@@ -126,7 +130,7 @@
         <tr id="art-{{ a.id }}">
           <td class="muted" style="width:30px;">{{ a.sequence_number }}</td>
           <td><a href="/a/{{ a.id }}?origin={{ 'archive' if archived else 'inbox' }}">{{ a.headline or a.title or '(미생성)' }}</a>
-            {% if a.photo_count %}<span class="muted" style="font-size:12px;">📷{{ a.photo_count }}</span>{% endif %}</td>
+            {% if a.photo_count %}<span class="muted" style="font-size:12px;">{{ icon('camera', 12) }}{{ a.photo_count }}</span>{% endif %}</td>
           <td class="muted" style="width:96px;">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
           <td style="width:84px;"><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
           <td style="width:90px;">
@@ -137,7 +141,7 @@
             {% else %}
               <form method="post" action="/a/{{ a.id }}/publish"
                     data-confirm="이 기사를 발행합니다. 계속할까요?">
-                <button type="submit" class="publish sm">🚀 발행</button></form>
+                <button type="submit" class="publish sm">{{ icon('send', 13) }} 발행</button></form>
             {% endif %}
           </td>
         </tr>
@@ -146,19 +150,19 @@
     </table>
   </details>
   {% else %}
-  <div class="muted msg-empty">아직 기사를 만들지 않았습니다 — <b>⚡ 기사 생성</b>을 누르세요.</div>
+  <div class="muted msg-empty">아직 기사를 만들지 않았습니다 — <b>기사 생성</b>을 누르세요.</div>
   {% endif %}
 </div>
 {% endfor %}
 
 {% if not msgs %}
 {% if archived %}
-<div class="empty">보관된 메일이 없습니다.<br>기사함에서 <b>📥 메일 수집</b> 시 이전 메일이 이곳으로 옮겨집니다.</div>
+<div class="empty">보관된 메일이 없습니다.<br>기사함에서 <b>메일 수집</b> 시 이전 메일이 이곳으로 옮겨집니다.</div>
 {% else %}
 <div class="empty">
   수집된 메일이 없습니다.<br>아래 버튼으로 메일을 가져오세요.
   <div style="margin-top:16px;">
-    <button type="button" onclick="openCollectConfirm()" style="padding:11px 24px; font-size:15px;">📥 메일 수집</button>
+    <button type="button" onclick="openCollectConfirm()" style="padding:11px 24px; font-size:15px;">{{ icon('download') }} 메일 수집</button>
   </div>
 </div>
 {% endif %}

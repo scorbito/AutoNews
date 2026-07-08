@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}수집 목록{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 <div class="row" style="justify-content:space-between; align-items:center;">
   <h2 style="margin:0;">수집 작업 (수동) <span class="muted">({{ items|length }}건)</span></h2>
   <div class="row">
-    <form method="post" action="/collect"><button type="submit">📥 메일 수집</button></form>
+    <form method="post" action="/collect"><button type="submit">{{ icon('download') }} 메일 수집</button></form>
     <a href="/" style="font-size:13px;">← 기사 목록</a>
   </div>
 </div>
@@ -23,9 +24,9 @@
 <form method="post" action="/bulk">
   <div class="row" style="position:sticky; top:0; background:#f5f6f8; padding:8px 0; z-index:5;">
     <span class="muted">체크한 기사를 일괄:</span>
-    <button type="submit" name="action" value="generate">⚡ 초안 생성</button>
+    <button type="submit" name="action" value="generate">{{ icon('zap', 13) }} 초안 생성</button>
     <button class="gray" type="submit" name="action" value="review">✓ 검토완료</button>
-    <button class="green" type="submit" name="action" value="publish">🚀 선택 발행</button>
+    <button class="green" type="submit" name="action" value="publish">{{ icon('send', 13) }} 선택 발행</button>
     <span class="muted" id="selcount">0건 선택</span>
   </div>
 

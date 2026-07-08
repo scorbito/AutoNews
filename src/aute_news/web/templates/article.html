@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ it.headline or '기사' }}{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 <p><a href="/">← 목록</a>
    {% if it.draft_status %}· <a href="/item/{{ it.id }}">✎ 편집</a>{% endif %}
    · 상태 <span class="tag s-{{ it.draft_status or 'pending' }}">{{ label[it.draft_status] }}</span></p>
@@ -12,7 +13,7 @@
     </div>
     {% if it.published_url %}
     <div class="tag s-published" style="display:block; margin-bottom:14px; padding:8px 12px;">
-      🚀 발행됨 ({{ it.published_at }}) · 결과: <code>{{ it.published_url }}</code>
+      {{ icon('send', 13) }} 발행됨 ({{ it.published_at }}) · 결과: <code>{{ it.published_url }}</code>
     </div>
     {% endif %}
     <article class="article">{{ body_html|safe }}</article>

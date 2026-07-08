@@ -26,10 +26,11 @@
 </head>
 <body>
   <div class="box">
-    <h1>🔑 비밀번호 찾기</h1>
+    <img src="/static/logo.png" alt="뉴스플로우 AI" style="height:26px; display:block; margin-bottom:14px;">
+    <h1>비밀번호 찾기</h1>
     {% if sent == "1" %}
     <p class="sub">가입한 이메일 주소로 <b>비밀번호 재설정 링크</b>를 요청했습니다.</p>
-    <div class="ok">📧 해당 이메일로 재설정 메일을 보냈습니다. 메일함(스팸함 포함)을 확인해 링크로 새 비밀번호를 설정하세요.
+    <div class="ok">해당 이메일로 재설정 메일을 보냈습니다. 메일함(스팸함 포함)을 확인해 링크로 새 비밀번호를 설정하세요.
       <br>* 가입되지 않은 주소면 메일이 오지 않습니다.</div>
     <p class="alt"><a href="/login">← 로그인으로</a></p>
     {% else %}

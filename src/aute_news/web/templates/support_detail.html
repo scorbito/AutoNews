@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ i.subject }}{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 <p><a href="/support">← 문의·건의</a></p>
 {% set slabel = {'open':'대기','answered':'답변완료','closed':'처리완료'} %}
 {% set scls = {'open':'s-pending','answered':'s-done','closed':'s-published'} %}
@@ -17,7 +18,7 @@
 
   {% if i.reply %}
   <div class="block" style="margin-top:16px;">
-    <b>📨 운영자 답변</b>
+    <b>{{ icon('message', 14) }} 운영자 답변</b>
     <pre style="margin:6px 0 0;">{{ i.reply }}</pre>
     {% if i.replied_at %}<div class="muted" style="font-size:12px; margin-top:6px;">{{ i.replied_at.strftime('%Y-%m-%d %H:%M') }}</div>{% endif %}
   </div>

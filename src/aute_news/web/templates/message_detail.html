@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}메일 상세{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 <p><a href="/inbox" onclick="if(history.length>1){history.back();return false;}">← 뒤로</a></p>
 
 <div class="card">
@@ -12,7 +13,7 @@
   <div class="row" style="margin-top:10px;">
     <form method="post" action="/messages/{{ m.id }}/process"
           onsubmit="this.querySelector('button').textContent='처리중… (기사 많으면 시간 걸려요)'; this.querySelector('button').disabled=true;">
-      <button type="submit" class="green">{% if art_count %}↻ 재생성{% else %}⚡ 기사 생성{% endif %}</button>
+      <button type="submit" class="green">{% if art_count %}{{ icon('rotate', 14) }} 재생성{% else %}{{ icon('zap', 14) }} 기사 생성{% endif %}</button>
     </form>
     {% if art_count %}<a href="/?status=all" style="font-size:13px;">생성된 기사 {{ art_count }}건 보기 →</a>{% endif %}
   </div>
@@ -27,7 +28,7 @@
 
 {% for a in atts %}
 <div class="card" style="margin-top:12px;">
-  <h3 style="margin:0 0 6px;">📎 {{ a.row.filename }}
+  <h3 style="margin:0 0 6px;">{{ icon('paperclip', 13) }} {{ a.row.filename }}
     <span class="tag s-draft">{{ a.row.format }}</span>
     <span class="tag s-{{ a.row.extract_status }}">{{ a.row.extract_status }}</span>
   </h3>

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ it.filename }}{% endblock %}
 {% block body %}
+{% from "_icons.html" import icon %}
 <p><a href="/">← 목록</a></p>
 <h2>{{ it.headline or it.subject or it.filename }}</h2>
 <p class="muted">{{ it.filename }} · {{ it.sender }} · {{ it.date }}
@@ -25,7 +26,7 @@
       {% if it.extracted_text %}
         <p class="muted">아직 초안이 없습니다. Gemini로 생성하세요.</p>
         <form method="post" action="/item/{{ it.id }}/generate">
-          <button type="submit">⚡ 초안 생성 (Gemini)</button>
+          <button type="submit">{{ icon('zap', 14) }} 초안 생성 (Gemini)</button>
         </form>
       {% else %}
         <p class="muted">추출 원문이 없어 생성할 수 없습니다.</p>
@@ -37,12 +38,12 @@
         <label>본문 (편집 가능)</label>
         <textarea name="content">{{ it.content }}</textarea>
         <div class="row">
-          <button type="submit">💾 저장</button>
+          <button type="submit">{{ icon('save', 14) }} 저장</button>
         </div>
       </form>
       <div class="row">
         <form method="post" action="/item/{{ it.id }}/generate">
-          <button class="gray" type="submit">↻ 재생성</button>
+          <button class="gray" type="submit">{{ icon('rotate', 13) }} 재생성</button>
         </form>
         <form method="post" action="/item/{{ it.id }}/status">
           <input type="hidden" name="status" value="reviewed">
@@ -50,7 +51,7 @@
         </form>
         <form method="post" action="/item/{{ it.id }}/status">
           <input type="hidden" name="status" value="published">
-          <button class="green" type="submit">🚀 발행 (대기)</button>
+          <button class="green" type="submit">{{ icon('send', 13) }} 발행 (대기)</button>
         </form>
       </div>
       <p class="muted">※ 발행 시 아래에서 선택한 이미지가 기사에 함께 들어갑니다.</p>

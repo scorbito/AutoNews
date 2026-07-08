@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}기사 목록{% endblock %}
 {% block body %}
-<h2 style="text-align:center; margin:0 0 18px;">기사 <span class="sub">{{ total }}건</span></h2>
+{% from "_icons.html" import icon %}
+<h2 style="margin:0 0 18px;">{{ icon('newspaper', 20) }} 기사 <span class="sub">{{ total }}건</span></h2>
 
 <div class="row" style="margin-bottom:18px;">
   {% for key, name in filters %}
@@ -16,7 +17,7 @@
     <label style="font-weight:normal; display:inline-flex; align-items:center; gap:6px; margin:0;">
       <input type="checkbox" id="checkall" style="margin:0;"> 전체</label>
     <span class="muted" id="selcount">0건 선택</span>
-    <button class="publish" type="submit" name="action" value="publish">🚀 선택 발행</button>
+    <button class="publish" type="submit" name="action" value="publish">{{ icon('send', 13) }} 선택 발행</button>
   </div>
 
   {% for g in groups %}
@@ -24,7 +25,7 @@
     <div class="row" style="justify-content:space-between; background:#eef1f6; padding:10px 14px;">
       <div>
         <label style="font-weight:600;">
-          <input type="checkbox" class="grpall"> 📧 {{ g.subject or '(제목 없음)' }}
+          <input type="checkbox" class="grpall"> {{ icon('mail', 14) }} {{ g.subject or '(제목 없음)' }}
         </label>
         <span class="muted"> · 기사 {{ g.articles|length }}건{% if g.date %} · {{ g.date }}{% endif %}</span>
       </div>
@@ -44,7 +45,7 @@
           <td class="muted">{{ a.sequence_number }}</td>
           <td><a href="/a/{{ a.id }}">{{ a.headline or a.title or '(미생성)' }}</a></td>
           <td class="muted">{{ cats.get(a.category_code, a.category_code or '-') }}</td>
-          <td class="muted">{% if a.photo_count %}📷 {{ a.photo_count }}{% else %}–{% endif %}</td>
+          <td class="muted">{% if a.photo_count %}{{ icon('camera', 12) }} {{ a.photo_count }}{% else %}–{% endif %}</td>
           <td><span class="tag s-{{ a.status }}">{{ astatus[a.status] }}</span></td>
         </tr>
       {% endfor %}

@@ -11,6 +11,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+  {% from "_icons.html" import icon %}
   {% set p = request.url.path %}
   {% set nc = nav_counts(request) %}
   <div class="app">
@@ -26,32 +27,32 @@
       </div>
 
       <div class="collect">
-        <button type="button" onclick="openCollectConfirm()">📥 메일 수집</button>
+        <button type="button" onclick="openCollectConfirm()">{{ icon('download') }} 메일 수집</button>
       </div>
 
       <nav class="nav">
         <a href="/inbox" class="nav-item {% if p == '/' or p.startswith('/inbox') or p.startswith('/messages') or p.startswith('/a/') %}active{% endif %}">
-          <span class="ico">📰</span> 기사함
+          <span class="ico">{{ icon('inbox', 17) }}</span> 기사함
           {% if nc.messages is defined %}<span class="nav-count">{{ nc.messages }}</span>{% endif %}</a>
         <a href="/compose" class="nav-item {% if p.startswith('/compose') %}active{% endif %}">
-          <span class="ico">✏️</span> 기사 작성</a>
+          <span class="ico">{{ icon('pen', 17) }}</span> 기사 작성</a>
         <a href="/archive" class="nav-item {% if p.startswith('/archive') %}active{% endif %}">
-          <span class="ico">🗄</span> 보관함
+          <span class="ico">{{ icon('archive', 17) }}</span> 보관함
           {% if nc.archived is defined %}<span class="nav-count">{{ nc.archived }}</span>{% endif %}</a>
         <a href="/board" class="nav-item {% if p.startswith('/board') %}active{% endif %}">
-          <span class="ico">🗞</span> 발행 게시판</a>
+          <span class="ico">{{ icon('newspaper', 17) }}</span> 발행 게시판</a>
         <a href="/settings" class="nav-item {% if p.startswith('/settings') %}active{% endif %}">
-          <span class="ico">⚙</span> 내 설정</a>
+          <span class="ico">{{ icon('settings', 17) }}</span> 내 설정</a>
         <a href="/billing" class="nav-item {% if p.startswith('/billing') %}active{% endif %}">
-          <span class="ico">💳</span> 구독</a>
+          <span class="ico">{{ icon('credit-card', 17) }}</span> 구독</a>
         {% if request.session.get('is_admin') %}
         <div class="nav-label">운영</div>
         <a href="/admin" class="nav-item {% if p.startswith('/admin') %}active{% endif %}">
-          <span class="ico">🛠</span> 관리자</a>
+          <span class="ico">{{ icon('wrench', 17) }}</span> 관리자</a>
         {% endif %}
         <!-- 모바일: 메뉴 끝 인라인 (데스크톱에선 숨기고 하단의 것을 사용) -->
         <a href="/support" class="nav-item nav-support-m {% if p.startswith('/support') %}active{% endif %}">
-          <span class="ico">💬</span> 문의·건의</a>
+          <span class="ico">{{ icon('message', 17) }}</span> 문의·건의</a>
       </nav>
 
       {% set q = job_queue(request) %}
@@ -76,7 +77,7 @@
       <div class="spacer"></div>
 
       <a href="/support" class="nav-item nav-support-d {% if p.startswith('/support') %}active{% endif %}">
-        <span class="ico">💬</span> 문의·건의</a>
+        <span class="ico">{{ icon('message', 17) }}</span> 문의·건의</a>
 
       <div class="userbox">
         {% set em = request.session.get('email','') %}
@@ -94,7 +95,7 @@
   <!-- 메일 수집 확인 모달 -->
   <div id="collectConfirm" class="modal-ov" onclick="if(event.target===this)closeCollectConfirm()">
     <div class="modal">
-      <h3 style="margin:0 0 10px;">📥 메일 수집</h3>
+      <h3 style="margin:0 0 10px;">{{ icon('download') }} 메일 수집</h3>
       <p class="muted" style="margin:0 0 20px; line-height:1.7; font-size:14px;">
         새로운 메일을 수집하면 <b style="color:var(--gray-800);">기사함의 기존 메일·기사가 보관함으로 이동</b>합니다. 계속할까요?</p>
       <div class="row" style="justify-content:flex-end; gap:8px;">

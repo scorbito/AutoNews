@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 {% block title %}문의·건의{% endblock %}
 {% block body %}
-<h2 style="margin:0 0 16px;">문의·건의 {% if is_admin %}<span class="sub">전체 (관리자)</span>{% endif %}</h2>
+{% from "_icons.html" import icon %}
+<h2 style="margin:0 0 16px;">{{ icon('message', 20) }} 문의·건의 {% if is_admin %}<span class="sub">전체 (관리자)</span>{% endif %}</h2>
 {% if msg %}<p class="block">{{ msg }}</p>{% endif %}
 
 {% if not is_admin %}
-<div class="card" style="max-width:640px; margin-bottom:18px;">
+<div class="row" style="margin-bottom:14px;">
+  <button type="button" id="inqToggle"
+          onclick="var f=document.getElementById('inqForm'), on=f.style.display==='none';
+                   f.style.display=on?'block':'none';
+                   this.textContent=on?'✕ 작성 취소':'새 문의 작성';
+                   if(on)f.querySelector('input[name=subject]').focus();">{{ '✕ 작성 취소' if not items else '새 문의 작성' }}</button>
+</div>
+{# 목록이 먼저 보이게 접어두고, 아직 문의가 없으면 처음부터 펼침 #}
+<div id="inqForm" class="card" style="max-width:640px; margin-bottom:18px; display:{{ 'block' if not items else 'none' }};">
   <h3>새 문의·건의</h3>
   <form method="post" action="/support">
     <label>유형</label>
@@ -36,7 +45,7 @@
   {% for i in items %}
     <tr>
       <td>{{ i.kind }}</td>
-      <td><a href="/support/{{ i.id }}">{{ i.subject }}</a>{% if i.reply %} <span class="muted" style="font-size:12px;">💬</span>{% endif %}</td>
+      <td><a href="/support/{{ i.id }}">{{ i.subject }}</a>{% if i.reply %} <span class="muted" title="답변 있음">{{ icon('message', 12) }}</span>{% endif %}</td>
       {% if is_admin %}<td class="muted" style="font-size:12px;">{{ i.tenant_name }} · {{ i.user_email }}</td>{% endif %}
       <td><span class="tag {{ scls.get(i.status, 's-pending') }}">{{ slabel.get(i.status, i.status) }}</span></td>
       <td class="muted" style="font-size:12px;">{{ i.created_at.strftime('%Y-%m-%d') if i.created_at else '' }}</td>
