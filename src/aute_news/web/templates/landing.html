@@ -29,7 +29,7 @@
     .top { position:fixed; top:0; left:0; right:0; z-index:20; background:rgba(255,255,255,.88); backdrop-filter:blur(14px); border-bottom:1px solid rgba(229,234,242,.8); }
     .nav { max-width:1180px; margin:0 auto; height:64px; padding:0 22px; display:flex; align-items:center; justify-content:space-between; gap:18px; }
     .brand { display:flex; align-items:center; gap:10px; font-weight:900; letter-spacing:-.02em; }
-    .logo { width:34px; height:34px; display:grid; place-items:center; border-radius:8px; background:var(--blue); color:#fff; font-weight:900; }
+    .brand img { height:30px; display:block; }
     .links { display:flex; align-items:center; gap:22px; color:#475467; font-weight:700; font-size:14px; }
     .links a:hover { color:var(--blue2); }
     .nav-actions { display:flex; align-items:center; gap:10px; }
@@ -200,7 +200,7 @@
 <body data-version="landing-20260708-4">
   <header class="top">
     <nav class="nav" aria-label="주요 메뉴">
-      <a class="brand" href="/"><span class="logo">N</span><span>뉴스플로우 AI</span></a>
+      <a class="brand" href="/"><img src="/static/logo.png" alt="뉴스플로우 AI"></a>
       <div class="links">
         <a href="#problem">문제</a><a href="#demo">자동 처리 데모</a><a href="#flow">자동화 흐름</a><a href="#features">핵심 기능</a><a href="#impact">효과</a>
       </div>

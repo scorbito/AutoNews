@@ -60,10 +60,7 @@ h1,h2,h3,h4 { color: var(--gray-900); line-height: 1.3; }
   color: var(--gray-900); padding: 8px 10px 14px; letter-spacing: -.2px;
 }
 .brand:hover { text-decoration: none; }
-.brand .logo {
-  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--brand-500), var(--brand-700)); color:#fff; font-size:15px;
-}
+.brand img { height: 26px; display: block; }
 /* subscription status — 브랜드 옆 '구독중' 배지 */
 .brand-row { display: flex; align-items: center; gap: 8px; padding: 0 10px 6px; }
 .brand-row .brand { padding: 8px 0 4px; }
