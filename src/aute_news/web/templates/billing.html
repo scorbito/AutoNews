@@ -12,7 +12,7 @@
 
 <div class="card" style="max-width:520px;">
   <div class="row" style="justify-content:space-between; align-items:center;">
-    <strong style="font-size:16px;">{{ s.plan or 'basic' }} 플랜</strong>
+    <strong style="font-size:16px;">{{ plan_labels.get(s.plan, '베이직') }} 플랜</strong>
     <span class="tag {{ badge.get(s.status, ('s-pending',''))[0] }}">
       {{ badge.get(s.status, ('s-pending', s.status))[1] }}</span>
   </div>
@@ -44,19 +44,49 @@
 </div>
 
 <div class="card" style="max-width:520px; margin-top:14px;">
-  <h3 style="margin:0 0 8px;">카드 결제</h3>
-  <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.7;">
-    월 <b>{{ "{:,}".format(monthly_price) }}원</b> · 첫 결제 <b>{{ "{:,}".format(next_amount) }}원</b>
-    {% if next_amount < monthly_price %}<b style="color:#3a4fd6;">(첫 달 반값)</b>{% endif %}<br>
-    카드를 등록하면 즉시 첫 결제가 진행되고 30일 구독이 시작됩니다. 이후 매달 자동 결제됩니다.</p>
-  {% if toss_client_key %}
-  <button type="button" id="payBtn" onclick="startBilling()">
-    {{ icon('credit-card', 15) }} {{ '결제수단 변경' if has_billing_key else '구독 결제하기' }}</button>
-  {% if toss_client_key.startswith('test_') %}
-  <div class="muted" style="font-size:12px; margin-top:8px;">테스트 모드 — 실제 결제되지 않습니다.</div>
+  <h3 style="margin:0 0 8px;">플랜 선택</h3>
+  {% if launch %}
+  <p class="block" style="margin:0 0 12px;">
+    <b>2026년 가입 회원 혜택</b> — 아래 할인가가 <b>평생 고정</b>됩니다 (이후 정가 인상과 무관).</p>
   {% endif %}
-  {% else %}
-  <p class="muted" style="font-size:13px;">결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.</p>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    {% for p in plans %}
+    <div style="border:1px solid {{ 'var(--brand-500)' if p.key == current_plan and s.active else 'var(--border)' }};
+                border-radius:var(--r-sm); padding:14px;">
+      <div class="row" style="justify-content:space-between;">
+        <b>{{ p.label }}</b>
+        {% if p.key == current_plan and s.active %}<span class="tag s-published">현재 플랜</span>{% endif %}
+      </div>
+      <div style="margin-top:8px;">
+        {% if p.price < p.list_price %}
+        <span class="muted" style="text-decoration:line-through; font-size:13px;">{{ "{:,}".format(p.list_price) }}원</span>
+        {% endif %}
+        <div style="font-size:20px; font-weight:800;">{{ "{:,}".format(p.price) }}<span style="font-size:13px; font-weight:600;">원/월</span></div>
+      </div>
+      <div class="muted" style="font-size:12.5px; margin:6px 0 12px;">기사 {{ "{:,}".format(p.quota) }}건/월</div>
+      {% if not toss_client_key %}
+        <p class="muted" style="font-size:12px;">결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.</p>
+      {% elif p.key == current_plan and s.active %}
+        <button type="button" class="secondary sm" disabled style="width:100%;">이용 중</button>
+      {% elif has_billing_key %}
+        <form method="post" action="/billing/change-plan"
+              data-confirm="{{ p.label }} 플랜으로 변경합니다. {{ '{:,}'.format(p.price) }}원이 즉시 결제되고 오늘부터 새 30일 주기가 시작됩니다. 계속할까요?">
+          <input type="hidden" name="plan" value="{{ p.key }}">
+          <button type="submit" class="sm" style="width:100%;">이 플랜으로 변경</button>
+        </form>
+      {% else %}
+        <button type="button" class="sm pay-btn" style="width:100%;" onclick="startBilling('{{ p.key }}', this)">
+          {{ icon('credit-card', 13) }} 이 플랜으로 결제</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted" style="font-size:12.5px; margin:12px 0 0; line-height:1.7;">
+    카드를 등록하면 즉시 첫 결제가 진행되고 30일 구독이 시작됩니다. 이후 매달 자동 결제됩니다.<br>
+    플랜 변경 시 변경일부터 새 30일 주기가 시작되고 한도가 리셋됩니다.
+    {% if has_billing_key %}· 결제수단 변경은 문의·건의로 요청해 주세요.{% endif %}</p>
+  {% if toss_client_key and toss_client_key.startswith('test_') %}
+  <div class="muted" style="font-size:12px; margin-top:8px;">테스트 모드 — 실제 결제되지 않습니다.</div>
   {% endif %}
 </div>
 
@@ -66,8 +96,9 @@
     카드 결제가 어려우신 경우 아래 계좌로 입금 후 입금확인 요청을 보내 주세요.<br>
     무통장입금은 카드 수수료 절감분을 반영해 <b>{{ bank_discount_rate }}% 할인</b>됩니다.
   </p>
+  {% set cur = (plans | selectattr('key', 'equalto', current_plan) | list | first) or plans[0] %}
   <div class="block" style="font-size:14px; line-height:1.8;">
-    <b>입금액</b>: <b>{{ "{:,}".format(bank_amount) }}원</b><br>
+    <b>입금액</b>: {% for p in plans %}{{ p.label }} <b>{{ "{:,}".format(p.bank) }}원</b>{{ ' · ' if not loop.last }}{% endfor %}<br>
     <b>은행</b>: {{ bank_name }}<br>
     <b>계좌번호</b>: {{ bank_account or '관리자에게 문의해 주세요' }}<br>
     <b>예금주</b>: {{ bank_holder or '관리자에게 문의해 주세요' }}
@@ -76,7 +107,7 @@
     <label>입금자명</label>
     <input type="text" name="depositor" required placeholder="실제 입금자명을 입력해 주세요">
     <label>입금액</label>
-    <input type="number" name="amount" min="1" required value="{{ bank_amount }}">
+    <input type="number" name="amount" min="1" required value="{{ cur.bank }}">
     <label>메모</label>
     <textarea name="memo" style="min-height:80px;" placeholder="입금 예정일, 요청사항 등을 적어 주세요"></textarea>
     <div class="row" style="margin-top:10px;"><button type="submit">입금확인 요청</button></div>
@@ -86,16 +117,15 @@
 {% if toss_client_key %}
 <script src="https://js.tosspayments.com/v1/payment"></script>
 <script>
-  function startBilling() {
-    var btn = document.getElementById('payBtn');
-    btn.disabled = true;
+  function startBilling(plan, btn) {
+    if (btn) btn.disabled = true;
     var tp = TossPayments({{ toss_client_key | tojson }});
     tp.requestBillingAuth('카드', {
       customerKey: {{ customer_key | tojson }},
-      successUrl: {{ success_url | tojson }},
+      successUrl: {{ success_url | tojson }} + '?plan=' + encodeURIComponent(plan || 'basic'),
       failUrl: {{ fail_url | tojson }}
     }).catch(function (e) {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
       if (e.code !== 'USER_CANCEL') alert('결제창 오류: ' + (e.message || e.code));
     });
   }

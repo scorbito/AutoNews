@@ -996,7 +996,14 @@ def billing(request: Request, msg: str = ""):
     sub = subscription.status_view(conn, t)
     raw = db.get_subscription(conn, t) or {}
     customer_key = subscription.ensure_customer_key(conn, t)
+    tier = subscription.pricing_tier(conn, t)
     conn.close()
+    plans = []
+    for key, p in subscription.PLANS.items():
+        price = subscription.plan_price(key, tier)
+        plans.append({"key": key, "label": p["label"], "quota": p["quota"],
+                      "list_price": p["list_price"], "price": price,
+                      "bank": subscription.bank_transfer_amount(price)})
     base = str(request.base_url).rstrip("/")
     return templates.TemplateResponse(
         request, "billing.html",
@@ -1005,9 +1012,9 @@ def billing(request: Request, msg: str = ""):
          "customer_key": customer_key,
          "success_url": base + "/billing/toss/confirm",
          "fail_url": base + "/billing/toss/fail",
-         "next_amount": subscription.charge_amount(raw.get("charges_count", 0)),
-         "monthly_price": subscription.MONTHLY_PRICE,
-         "bank_amount": subscription.bank_transfer_amount(raw.get("charges_count", 0)),
+         "plans": plans, "launch": tier == "launch2026",
+         "current_plan": (raw.get("plan") if raw.get("plan") in subscription.PLANS else "basic"),
+         "plan_labels": {k: p["label"] for k, p in subscription.PLANS.items()},
          "bank_discount_rate": int(subscription.BANK_TRANSFER_DISCOUNT_RATE * 100),
          "bank_name": os.getenv("BANK_TRANSFER_BANK", "입금 계좌 준비 중"),
          "bank_account": os.getenv("BANK_TRANSFER_ACCOUNT", ""),
@@ -1016,7 +1023,8 @@ def billing(request: Request, msg: str = ""):
 
 
 @app.get("/billing/toss/confirm")
-def billing_toss_confirm(request: Request, authKey: str = "", customerKey: str = ""):
+def billing_toss_confirm(request: Request, authKey: str = "", customerKey: str = "",
+                         plan: str = "basic"):
     """토스 카드 등록 성공 콜백 → 빌링키 발급 + 첫 결제 + 구독 활성화."""
     t = _tenant(request)
     if not authKey:
@@ -1024,12 +1032,34 @@ def billing_toss_confirm(request: Request, authKey: str = "", customerKey: str =
     conn = db.connect()
     try:
         ck = subscription.ensure_customer_key(conn, t)   # 서버 보관 키 사용(콜백값과 동일)
-        res = subscription.subscribe_with_auth(conn, t, authKey, ck)
-        msg = f"구독이 시작되었습니다 — {res['amount']:,}원 결제 완료"
+        res = subscription.subscribe_with_auth(conn, t, authKey, ck, plan=plan)
+        label = subscription.PLANS[res["plan"]]["label"]
+        msg = f"{label} 플랜 구독이 시작되었습니다 — {res['amount']:,}원 결제 완료"
     except billing_toss.TossError as e:
         msg = f"결제 실패: {e.message}"
     except Exception as e:  # noqa: BLE001
         msg = f"결제 처리 오류: {type(e).__name__}"
+    finally:
+        conn.close()
+    return RedirectResponse(f"/billing?msg={msg}", status_code=303)
+
+
+@app.post("/billing/change-plan")
+def billing_change_plan(request: Request, plan: str = Form(...)):
+    """플랜 변경(업그레이드 등) — 저장된 빌링키로 즉시 결제, 오늘부터 새 30일 주기."""
+    t = _tenant(request)
+    if plan not in subscription.PLANS:
+        return RedirectResponse("/billing?msg=알 수 없는 플랜입니다", status_code=303)
+    conn = db.connect()
+    try:
+        res = subscription.change_plan(conn, t, plan)
+        if res is None:
+            msg = "등록된 카드가 없습니다. 먼저 플랜을 선택해 카드 결제를 진행해 주세요."
+        else:
+            label = subscription.PLANS[res["plan"]]["label"]
+            msg = f"{label} 플랜으로 변경되었습니다 — {res['amount']:,}원 결제, 오늘부터 새 주기 시작"
+    except billing_toss.TossError as e:
+        msg = f"결제 실패: {e.message}"
     finally:
         conn.close()
     return RedirectResponse(f"/billing?msg={msg}", status_code=303)
@@ -1054,8 +1084,10 @@ def billing_bank_transfer(request: Request, depositor: str = Form(...),
     if not depositor or amount <= 0:
         return RedirectResponse("/billing?msg=입금자명과 입금액을 확인해 주세요", status_code=303)
     conn = db.connect()
+    raw = db.get_subscription(conn, t) or {}
+    plan = raw.get("plan") if raw.get("plan") in subscription.PLANS else "basic"
     expected_amount = subscription.bank_transfer_amount(
-        (db.get_subscription(conn, t) or {}).get("charges_count", 0))
+        subscription.plan_price(plan, subscription.pricing_tier(conn, t)))
     body = (
         f"입금자명: {depositor}\n"
         f"입금액: {amount:,}원\n"

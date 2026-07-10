@@ -726,7 +726,7 @@ def upsert_subscription(conn, tenant_id: int, **fields) -> None:
     cols = {k: v for k, v in fields.items()
             if k in ("status", "plan", "monthly_quota", "period_start", "period_end",
                      "provider", "billing_key_enc", "customer_key", "charges_count",
-                     "last_paid_at")}
+                     "last_paid_at", "pricing_tier")}
     if not cols:
         return
     names = ["tenant_id", *cols.keys()]
