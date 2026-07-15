@@ -63,14 +63,37 @@ Supabase 대시보드 → **Project Settings → Database → Connection string 
 | `STORAGE_BUCKET` | `files` |
 | `APP_ENV` | `production` (이게 있으면 운영서버로 인식 → CMS 설정된 테넌트는 실제 발행) |
 | `PUBLISH_DISABLED` | (비상 정지용. `1` 이면 운영이어도 실제 발행 안 함=dry-run. 평소 비움) |
+| `SITE_URL` | `https://<발급/커스텀 도메인>` — **토스 콜백·비밀번호 재설정 링크의 절대 URL 베이스**. 미설정 시 요청에서 유추하는데 프록시 뒤에서 `http://` 로 잡혀 결제가 실패할 수 있음 |
+| `TOSS_CLIENT_KEY` / `TOSS_SECRET_KEY` | 토스 결제 키 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 운영자 실패 알림 |
+| `BANK_TRANSFER_BANK` / `_ACCOUNT` / `_HOLDER` | 무통장입금 안내 |
 
 4. **Settings → Networking → Generate Domain** 으로 공개 HTTPS 주소 발급.
 5. **Deploy** → 주소 접속 → `/login`·`/signup` 확인.
 
 > web 서비스 시작 명령은 **Procfile**(`web:`)에서 옴:
-> `uvicorn aute_news.web.app:app --host 0.0.0.0 --port $PORT --app-dir src`
+> `uvicorn ... --proxy-headers --forwarded-allow-ips="*"`
+> ⚠️ `--forwarded-allow-ips` 는 필수. uvicorn 기본값이 `127.0.0.1` 이라 Railway 프록시(내부 IP)가
+> 보내는 `X-Forwarded-Proto: https` 를 무시해서 `request.base_url` 이 `http://` 가 된다
+> → 토스 콜백(https 필수) 실패. Railway 처럼 신뢰된 프록시 뒤에서만 `*` 를 쓸 것.
 > ⚠️ `railway.json` 에는 startCommand 를 두지 않는다 — web/cron 이 같은 repo 라
 > 거기에 박으면 cron 도 uvicorn 으로 실행돼 버린다. 시작 명령은 **서비스별로** 지정.
+
+---
+
+## 1-B. 커스텀 도메인 연결
+
+1. 도메인 구매(가비아·후이즈 등).
+2. Railway **web 서비스 → Settings → Networking → Custom Domain** → 도메인 입력 → 안내되는 **CNAME 값** 확인.
+3. 등록업체 DNS 에 CNAME 등록 → 연결되면 **SSL 은 Railway 가 자동 발급**.
+   - `www.example.com` → CNAME 그대로 가능.
+   - 루트 `example.com` → CNAME 불가가 원칙. 등록업체가 ALIAS/ANAME 을 지원하거나,
+     **DNS 를 Cloudflare(무료)로 옮겨 CNAME 플래트닝**을 쓰면 해결.
+4. 도메인 붙인 뒤 **반드시 함께 갱신**:
+   - Railway 변수 `SITE_URL` = `https://새도메인`
+   - **Supabase → Authentication → URL Configuration → Redirect URLs** 에
+     `https://새도메인/reset-password` 추가 (안 하면 비밀번호 재설정 링크가 깨짐)
+   - 토스 상점 설정에 새 도메인 등록
 
 ---
 

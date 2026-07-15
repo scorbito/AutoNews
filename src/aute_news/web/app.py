@@ -156,6 +156,15 @@ def _tenant(request: Request) -> int:
     return request.session["tenant_id"]
 
 
+def _site_base(request: Request) -> str:
+    """외부(토스·Supabase 메일)에서 우리로 돌아올 절대 URL의 베이스.
+
+    SITE_URL 이 있으면 그걸 쓴다 — 프록시 뒤에서 request.base_url 이 http 로 잡히면
+    토스 콜백(https 필수)이 실패하므로, 운영에선 SITE_URL 을 반드시 설정할 것.
+    """
+    return os.getenv("SITE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+
+
 def _jload(s):
     try:
         return json.loads(s) if s else {}
@@ -224,7 +233,7 @@ def forgot_form(request: Request, sent: str = ""):
 @app.post("/forgot")
 def forgot_post(request: Request, email: str = Form(...)):
     """비밀번호 재설정 메일 발송 요청. 계정 열거 방지 위해 결과와 무관하게 동일 안내."""
-    base = os.getenv("SITE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+    base = _site_base(request)
     try:
         auth.send_recovery_email(email.strip(), f"{base}/reset-password")
     except Exception as e:  # noqa: BLE001 (메일 발송 실패도 사용자에겐 동일 안내)
@@ -1004,7 +1013,7 @@ def billing(request: Request, msg: str = ""):
         plans.append({"key": key, "label": p["label"], "quota": p["quota"],
                       "list_price": p["list_price"], "price": price,
                       "bank": subscription.bank_transfer_amount(price)})
-    base = str(request.base_url).rstrip("/")
+    base = _site_base(request)
     return templates.TemplateResponse(
         request, "billing.html",
         {"sub": sub, "msg": msg, "email": request.session.get("email"),
